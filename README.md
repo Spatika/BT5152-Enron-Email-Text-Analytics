@@ -1,3 +1,3 @@
-# BT5152-Kaggle-News-Analytics
+# BT5152-Enron-Email-Text-Analytics
 
-Two Sigma: Using News to Predict Stock Movements
+Using Enron Corpus for binary classification (person of interest/not)
