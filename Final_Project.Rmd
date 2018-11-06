@@ -10,6 +10,7 @@ library(RColorBrewer)
 library(wordcloud)
 library(ROCR)
 library("corrplot")
+library("MASS")
 ```
 ### Read Datasets
 ```{r}
@@ -73,27 +74,7 @@ scaled_training <- enron_train %>% mutate_if(is.numeric, normalize)
 scaled_test <- enron_test %>% mutate_if(is.numeric, normalize)
 ```
 
-```{r}
-#Basic GLM Model
-glm_data <- select(scaled_training, -X)
-glm_model <- glm(poi ~ . , data=glm_data, family=binomial())
-glm_prob <- predict(glm_model, type="response")
-glm_pred <- prediction(glm_prob, scaled_training$poi)
-glm_acc <- performance(glm_pred, measure="acc")
-glm_err <- performance(glm_pred, measure="err")
-glm_auc <- performance(glm_pred, "auc")
-glm_auc@y.values[[1]]
-plot(glm_acc)
-
-glm_prob_test <- predict(glm_model, newdata = scaled_test, type="response")
-
-library("MASS")
-glm.best <- stepAIC(glm_model, direction="both")
-
-glm_prob_train <- predict(glm.best$model, type="response")
-
-summary(glm.best)
-```
+## C5.0 Model
 ```{r}
 library(C50)
 model_tree <- C5.0(poi ~ ., select(scaled_training, -name)) #Fit model
@@ -109,26 +90,48 @@ train_accuracy <- confusionMatrix(train_pred_tree, scaled_training$poi)$overall[
 train_cm <- table(train_pred_tree, scaled_training$poi)
 cm <- table(test_pred_tree, scaled_test$poi)
 
-library(caret)
 precision(cm,relevant='True')  
 recall(cm,relevant='True')
 
 precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
 recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
+## SMOTE - Improves Recall rate to 85.7%
 ```{r}
+model.down <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
+cm <- table(predict(model.down, select(scaled_test, -name)), scaled_test$poi)
+confusionMatrix(cm)
+precision(cm,relevant='True')  
+recall(cm,relevant='True')
+F_meas(cm,relevant='True')
+```
 
+## Ensemble
+```{r}
 library(caretEnsemble)
 library(caret)
 folds <- createFolds(scaled_training$poi , k = 5)
 #We specify summaryFunction so that we can use ROC as our metric for primary model selection later
 control <- trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
-algos <- c('rf','glmStepAIC')
+algos <- c('rf','nnet')
 models <- caretList(poi ~ . , data=scaled_training, trControl=control, metric='ROC', methodList=algos)
 models_perf <- resamples(models)
 summary(models_perf)
 modelCor(models_perf)
 
+train_pred_rf <- predict(models$rf, scaled_training) #predict
+mean(train_pred_rf == scaled_training$poi) #Calculate accuracy
+test_pred_rf <- predict(model_tree, scaled_test) #predict
+mean(test_pred_rf == scaled_test$poi) #Calculate accuracy
+
+train_cm <- table(train_pred_tree, scaled_training$poi)
+cm <- table(test_pred_rf, scaled_test$poi)
+
+precision(cm,relevant='True')  
+recall(cm,relevant='True')
+
+precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
+recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
 ###  locate the blank line "\n\n"
 ```{r}
