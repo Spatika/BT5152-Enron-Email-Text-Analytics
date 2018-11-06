@@ -1,6 +1,4 @@
 ### Libraries
-
-
 ```{r}
 #library(formattable) # output is easier to read an well formatted
 library(stringr) # String manipulation, Regex
@@ -10,31 +8,139 @@ library(tm)
 library(SnowballC)
 library(RColorBrewer)
 library(wordcloud)
+library(ROCR)
+library("corrplot")
+```
+### Read Datasets
+```{r}
+emails <- read.csv("emails.csv", stringsAsFactors = FALSE)
+enron <- read.csv("enron_cleaned.csv", stringsAsFactors = FALSE)
+```
+## Data Exploration
+```{r}
+#We have 18 persons of interest out of 146 people
+nrow(enron)
+sum(enron$poi)
+summary(enron)
+#Loan Advances : Money provided by the bank to entities for fulfilling their short term requirements is known as Advances.
+#There are many legal formalities in case of loans as compared to advances.
+colnames(enron)[1] <- "name"
+#corrplot(cor(select(enron, -name), method = "circle"))
+#enron$id <- seq.int(nrow(enron)) 
+```
+## Cleaning Data Set
+```{r}
+payment_data <- c('salary',
+                'bonus',
+                'long_term_incentive',
+                'deferred_income',
+                'deferral_payments',
+                'loan_advances',
+                'other',
+                'expenses',                
+                'director_fees', 
+                'total_payments')
 
+stock_data <- c('exercised_stock_options',
+              'restricted_stock',
+              'restricted_stock_deferred',
+              'total_stock_value')
+
+email_data <- c("to_messages",
+              'from_messages',
+              'from_poi_to_this_person',
+              'from_this_person_to_poi',
+              'shared_receipt_with_poi')
+
+features_list <- paste(c('poi'), payment_data , stock_data ,email_data)
 ```
 
+## Split into training and validation and perform scaling
+```{r}
+enron$poi <- factor(enron$poi)
+normalize <- function(x) { 
+  return((x - min(x)) / (max(x) - min(x)))
+}
 
+denormalize <- function(x, min_x, max_x) { 
+  return(x * (max_x - min_x) + min_x) 
+}
 
+enron_train <- enron %>% sample_frac(3/5)
+enron_test <- anti_join(enron,enron_train, by = 'name') 
 
-### read emails.csv
+scaled_training <- enron_train %>% mutate_if(is.numeric, normalize)
+scaled_test <- enron_test %>% mutate_if(is.numeric, normalize)
+```
 
 ```{r}
-enron <- read.csv("emails.csv", stringsAsFactors = FALSE)
+#Basic GLM Model
+glm_data <- select(scaled_training, -X)
+glm_model <- glm(poi ~ . , data=glm_data, family=binomial())
+glm_prob <- predict(glm_model, type="response")
+glm_pred <- prediction(glm_prob, scaled_training$poi)
+glm_acc <- performance(glm_pred, measure="acc")
+glm_err <- performance(glm_pred, measure="err")
+glm_auc <- performance(glm_pred, "auc")
+glm_auc@y.values[[1]]
+plot(glm_acc)
+
+glm_prob_test <- predict(glm_model, newdata = scaled_test, type="response")
+
+library("MASS")
+glm.best <- stepAIC(glm_model, direction="both")
+
+glm_prob_train <- predict(glm.best$model, type="response")
+
+summary(glm.best)
 ```
+```{r}
+library(C50)
+model_tree <- C5.0(poi ~ ., select(scaled_training, -name)) #Fit model
+summary(model_tree) #We can peek into the tree model
+plot(model_tree) #plot
+train_pred_tree <- predict(model_tree, select(scaled_training, -name)) #predict
+mean(train_pred_tree == scaled_training$poi) #Calculate accuracy
+test_pred_tree <- predict(model_tree, select(scaled_test, -name)) #predict
+mean(test_pred_tree == scaled_test$poi) #Calculate accuracy
 
+train_accuracy <- confusionMatrix(train_pred_tree, scaled_training$poi)$overall['Accuracy']
 
+train_cm <- table(train_pred_tree, scaled_training$poi)
+cm <- table(test_pred_tree, scaled_test$poi)
+
+library(caret)
+precision(cm,relevant='True')  
+recall(cm,relevant='True')
+
+precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
+recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
+```
+```{r}
+
+library(caretEnsemble)
+library(caret)
+folds <- createFolds(scaled_training$poi , k = 5)
+#We specify summaryFunction so that we can use ROC as our metric for primary model selection later
+control <- trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
+algos <- c('rf','glmStepAIC')
+models <- caretList(poi ~ . , data=scaled_training, trControl=control, metric='ROC', methodList=algos)
+models_perf <- resamples(models)
+summary(models_perf)
+modelCor(models_perf)
+
+```
 ###  locate the blank line "\n\n"
-
 ```{r}
-breaks <- str_locate(enron$message, "\n\n")
+breaks <- str_locate(emails$message, "\n\n")
 ```
 
 
 ### Extract headers and bodies
 
 ```{r}
-headers <- str_sub(enron$message, end = breaks[,1] - 1)
-bodies <- str_sub(enron$message, start = breaks[,2] + 1)
+headers <- str_sub(emails$message, end = breaks[,1] - 1)
+bodies <- str_sub(emails$message, start = breaks[,2] + 1)
 ```
 
 
@@ -99,8 +205,8 @@ fileSplit <-rbind.fill(lapply(fileSplit, function(X) data.frame(t(X))))
 ### Creating one dataset
 
 ```{r}
-enron <- data.frame(fileSplit, headerParsed, bodies, stringsAsFactors = FALSE)
-colnames(enron)[1] <- "User"
+emails <- data.frame(fileSplit, headerParsed, bodies, stringsAsFactors = FALSE)
+colnames(emails)[1] <- "User"
 ```
 
 
@@ -127,17 +233,17 @@ gc()
 ### Mail writers
 
 ```{r}
-nrow(enron)
+nrow(emails)
 
-a <- enron[enron$From == 'kenneth.lay@enron.com' & enron$Subject == 'Associate/Analyst Program',][1,"bodies"]
-head(sort(table(enron$From), decreasing = TRUE), n=20)
+a <- emails[emails$From == 'kenneth.lay@enron.com' & emails$Subject == 'Associate/Analyst Program',][1,"bodies"]
+head(sort(table(emails$From), decreasing = TRUE), n=20)
 ```
 
 
 
 ### Mail recipients
 ```{r}
-head(sort(table(enron$To), decreasing = TRUE), n=20)
+head(sort(table(emails$To), decreasing = TRUE), n=20)
 ```
 
 
@@ -145,7 +251,7 @@ head(sort(table(enron$To), decreasing = TRUE), n=20)
 ### User
 
 ```{r 14}
-head(sort(table(enron$User), decreasing = TRUE), 20)
+head(sort(table(emails$User), decreasing = TRUE), 20)
 ```
 
 
@@ -155,9 +261,9 @@ head(sort(table(enron$User), decreasing = TRUE), 20)
 
 ```{r 15}
 # extract weekday
-enron$Weekday <- weekdays(enron$DateLocal)
+emails$Weekday <- weekdays(emails$DateLocal)
 # extract Hour of day
-enron$Hour <- enron$DateLocal$hour
+emails$Hour <- emails$DateLocal$hour
 
 ```
 
@@ -165,11 +271,11 @@ enron$Hour <- enron$DateLocal$hour
 
 
 ```{r}
-WeekdayCounts <- as.data.frame(table(enron$Weekday))
+WeekdayCounts <- as.data.frame(table(emails$Weekday))
 str(WeekdayCounts)
 WeekdayCounts$Var1 <- factor(WeekdayCounts$Var1, ordered=TRUE, 
                              levels=c( "Monday", "Tuesday", "Wednesday", "Thursday", "Friday","Saturday", "Sunday"))
-DayHourCounts <- as.data.frame(table(enron$Weekday, enron$Hour))
+DayHourCounts <- as.data.frame(table(emails$Weekday, emails$Hour))
 str(DayHourCounts)
 DayHourCounts$Hour <- as.numeric(as.character(DayHourCounts$Var2))
 DayHourCounts$Var1 <- factor(WeekdayCounts$Var1, ordered=TRUE, 
@@ -215,7 +321,7 @@ ggplot(DayHourCounts, aes(x = Hour, y = Var1)) +
 #### Create a corpus using the bodies variable
 
 ```{r 20}
-corpus <- Corpus(VectorSource(enron$bodies[1:100000]))
+corpus <- Corpus(VectorSource(emails$bodies[1:100000]))
 ```
 
 #### Convert corpus to lowercase 
