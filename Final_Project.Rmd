@@ -65,7 +65,7 @@ sum(as.numeric(merged$poi)-1)
 summary(merged)
 ```
 
-## TF-IDF FEATURES
+## TF-IDF Features
 ```{r}
 email_corpus <- VCorpus(VectorSource(merged$content))
 email_corpus <- tm_map(email_corpus, content_transformer(tolower))
@@ -86,42 +86,46 @@ tf_idf_features <- tbl_df(as.matrix(email_dtm))
 nzv_columns <- nearZeroVar(tf_idf_features)
 tf_idf_features <- tf_idf_features[, -nzv_columns]
 ```
-## LDA FOR DOCUMENT-TOPIC DIST AS FEATURES
+
+## Document-Topic Distributions as Features
 ```{r}
-# need weightTf matrix, not Tf-IDF
-# dtm_control2 <- list(weighting = weightTf)
-# email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
-# 
-# dtm_control2$dictionary <- findFreqTerms(email_dtm2, lowfreq = 100)
-# email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
-# 
-# # Remove docs which all frequencies are zeros (side effect of high frequency terms filtering during pre-processing)
-# 
-# row_totals <- apply(email_dtm2 , 1, sum)
-# email_dtm2 <- email_dtm2[apply(email_dtm2 , 1, sum) > 0,]
-# 
-# heldout_index <- sample(email_dtm2$nrow*0.1)
-# 
-# ks <- seq(5, 10, 1)
-# 
-# topic_models <- parSapply(cl = cl, ks, function(k, data) topicmodels::LDA(data, k = k, method = "Gibbs"), data = email_dtm2[-heldout_index,])
-# 
-# perplexities <- parSapply(cl = cl, topic_models, function(m, data) topicmodels::perplexity(m, data, use_theta = TRUE, estimate_theta = TRUE), data = email_dtm2[heldout_index,])
-# 
-# optimal_idx <- which.min(perplexities)
-# 
-# # get document-topic dist for all of email_dtm2 with posterior, then use those as features, add to features_df # # --> need to preserve names 
-# docs_topics <- posterior(topic_models[[optimal_idx]], email_dtm2)
-# 
-# document_topic_dist <- docs_topics[["topics"]]
-# 
-# # Make sure to stop cluster *plus* insert serial backend
-# stopCluster(cl); print("Cluster stopped.")
-# # insert serial backend, otherwise error in repetetive tasks
-# registerDoSEQ()
+#need weightTf matrix, not Tf-IDF
+dtm_control2 <- list(weighting = weightTf)
+email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
+
+dtm_control2$dictionary <- findFreqTerms(email_dtm2, lowfreq = 100)
+email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
+
+# Remove docs which all frequencies are zeros (side effect of high frequency terms filtering during pre-processing)
+
+row_totals <- apply(email_dtm2 , 1, sum)
+email_dtm2 <- email_dtm2[apply(email_dtm2 , 1, sum) > 0,]
+
+heldout_index <- sample(email_dtm2$nrow*0.1)
+
+ks <- seq(5, 10, 1)
+
+topic_models <- parSapply(cl = cl, ks, function(k, data) topicmodels::LDA(data, k = k, method = "Gibbs"), data = email_dtm2[-heldout_index,])
+
+perplexities <- parSapply(cl = cl, topic_models, function(m, data) topicmodels::perplexity(m, data, use_theta = TRUE, estimate_theta = TRUE), data = email_dtm2[heldout_index,])
+
+optimal_idx <- which.min(perplexities)
+
+# get document-topic dist for all of email_dtm2 with posterior, then use those as features, add to features_df # # --> need to preserve names
+docs_topics <- posterior(topic_models[[optimal_idx]], email_dtm2)
+document_topic_dist <- docs_topics[["topics"]]
+
+# Make sure to stop cluster *plus* insert serial backend
+stopCluster(cl); print("Cluster stopped.")
+# insert serial backend, otherwise error in repetetive tasks
+registerDoSEQ()
+```
+## Feature Construction Method 3
+```{r}
+
 ```
 
-## Scale numerical variables and  
+## Scale numerical variables
 ```{r}
 normalize <- function(x) { 
   return((x - min(x)) / (max(x) - min(x)))
@@ -135,10 +139,10 @@ combined_features_df <- merged[,-c(1,2,3)]
 combined_features_df <- combined_features_df %>% mutate_if(is.numeric, normalize)
 ```
 
-##Combine Text Features to original feature list
+## Combine Text Features to original feature list
 ```{r}
 colnames(combined_features_df) <- paste("Main", colnames(combined_features_df), sep = "_")
-combined_features_df <- cbind(combined_features_df, tf_idf_features)
+combined_features_df <- cbind(combined_features_df, tf_idf_features, document_topic_dist)
 ```
 
 ## 3A - Split into training and validation and perform scaling
@@ -177,6 +181,7 @@ recall(test_cm,relevant='True') #what % of positive tuples did the classifier la
 ```
 ## 3B - Baseline RPart Model
 ```{r}
+library(rpart)
 
 ```
 
@@ -252,7 +257,7 @@ merged$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
 merged$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
 ```
 
-### 3A and 3B models again with engineered features
+### 3B and 3C models again with engineered features
 ```{r}
 
 ```
