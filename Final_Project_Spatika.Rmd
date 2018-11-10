@@ -2,6 +2,9 @@
 ```{r}
 #library(formattable) # output is easier to read an well formatted
 library(tidyverse)
+library(caret)
+library(DMwR)
+
 library(stringr) # String manipulation, Regex
 library(plyr)
 library(ggplot2)
@@ -10,8 +13,8 @@ library(SnowballC)
 library(RColorBrewer)
 library(wordcloud)
 library(ROCR)
-library("corrplot")
-library("MASS")
+library(corrplot)
+library(MASS)
 ```
 ### Read Datasets
 ```{r}
@@ -22,8 +25,8 @@ enron <- read.csv("enron_cleaned.csv", stringsAsFactors = FALSE)
 ```{r}
 #We have 18 persons of interest out of 146 people
 nrow(enron)
-sum(enron$poi)
-summary(enron)
+sum(as.logical(enron$poi))
+str(enron)
 #Loan Advances : Money provided by the bank to entities for fulfilling their short term requirements is known as Advances.
 #There are many legal formalities in case of loans as compared to advances.
 colnames(enron)[1] <- "name"
@@ -75,65 +78,6 @@ scaled_training <- enron_train %>% mutate_if(is.numeric, normalize)
 scaled_test <- enron_test %>% mutate_if(is.numeric, normalize)
 ```
 
-## C5.0 Model
-```{r}
-library(C50)
-model_tree <- C5.0(poi ~ ., select(scaled_training, -name)) #Fit model
-summary(model_tree) #We can peek into the tree model
-plot(model_tree) #plot
-train_pred_tree <- predict(model_tree, select(scaled_training, -name)) #predict
-mean(train_pred_tree == scaled_training$poi) #Calculate accuracy
-test_pred_tree <- predict(model_tree, select(scaled_test, -name)) #predict
-mean(test_pred_tree == scaled_test$poi) #Calculate accuracy
-
-train_accuracy <- confusionMatrix(train_pred_tree, scaled_training$poi)$overall['Accuracy']
-
-train_cm <- table(train_pred_tree, scaled_training$poi)
-cm <- table(test_pred_tree, scaled_test$poi)
-
-precision(cm,relevant='True')  
-recall(cm,relevant='True')
-
-precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
-recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
-```
-## SMOTE - Improves Recall rate to 85.7%
-```{r}
-model.down <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
-cm <- table(predict(model.down, select(scaled_test, -name)), scaled_test$poi)
-confusionMatrix(cm)
-precision(cm,relevant='True')  
-recall(cm,relevant='True')
-F_meas(cm,relevant='True')
-```
-
-## Ensemble
-```{r}
-library(caretEnsemble)
-library(caret)
-folds <- createFolds(scaled_training$poi , k = 5)
-#We specify summaryFunction so that we can use ROC as our metric for primary model selection later
-control <- trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
-algos <- c('rf','nnet')
-models <- caretList(poi ~ . , data=scaled_training, trControl=control, metric='ROC', methodList=algos)
-models_perf <- resamples(models)
-summary(models_perf)
-modelCor(models_perf)
-
-train_pred_rf <- predict(models$rf, scaled_training) #predict
-mean(train_pred_rf == scaled_training$poi) #Calculate accuracy
-test_pred_rf <- predict(model_tree, scaled_test) #predict
-mean(test_pred_rf == scaled_test$poi) #Calculate accuracy
-
-train_cm <- table(train_pred_tree, scaled_training$poi)
-cm <- table(test_pred_rf, scaled_test$poi)
-
-precision(cm,relevant='True')  
-recall(cm,relevant='True')
-
-precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
-recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
-```
 ###  locate the blank line "\n\n"
 ```{r}
 breaks <- str_locate(emails$message, "\n\n")
@@ -146,9 +90,6 @@ breaks <- str_locate(emails$message, "\n\n")
 headers <- str_sub(emails$message, end = breaks[,1] - 1)
 bodies <- str_sub(emails$message, start = breaks[,2] + 1)
 ```
-
-
-
 
 
 ### Splitting the email header
@@ -196,14 +137,12 @@ rm(datesTest)
 rm(datesLocal)
 ```
 
-
-
 ### File column
 
 ```{r}
 ## split 
 fileSplit <- str_split(emails$file, "/")
-fileSplit <-rbind.fill(lapply(fileSplit, function(X) data.frame(t(X))))
+fileSplit <-rbind.fill(lapply(fileSplit, function(X) data.frame(t(X)))) # takes some time 
 ```
 
 ### Creating one dataset
@@ -211,9 +150,41 @@ fileSplit <-rbind.fill(lapply(fileSplit, function(X) data.frame(t(X))))
 ```{r}
 emails <- data.frame(fileSplit, headerParsed, bodies, stringsAsFactors = FALSE)
 colnames(emails)[1] <- "User"
+emails <- select(emails, -X4, -X5, -X6, -X7)
+unique(emails$User)
+
+
+by_X2 <- count(select(emails, -Date, -DateLocal), X2) 
+
+# all documents - 57653
+emails_all_documents <- subset(emails, X2 %in% c("all_documents"))
+by_x2 <- count(select(emails_all_documents, -Date, -DateLocal), X2)
+length(unique(emails_all_documents$User))
+head(emails_all_documents)
+
+# discussion threads 
+emails_discussion_threads <- subset(emails, X2 %in% "discussion_threads")
+count(select(emails_all_documents, -Date, -DateLocal), X2)
+length(unique(emails_all_documents$User))
+
+
+# sent - 57653
+emails_sent <- subset(emails, X2 %in% "sent")
+count(select(emails_sent, -Date, -DateLocal), X2)
+length(unique(emails_sent$User))
+
+# sent_items - 37921
+emails_sent_items <- subset(emails, X2 %in% "sent_items")
+count(select(emails_sent_items, -Date, -DateLocal), X2)
+length(unique(emails_sent$User))
+
+# _sent_mail - 30109
+emails_sent_mail <- subset(emails, X2 %in% "_sent_mail")
+count(select(emails_sent_mail, -Date, -DateLocal), X2)
+length(unique(emails_sent$User))
+
+
 ```
-
-
 
 ### Cleaning up 
 
@@ -321,7 +292,6 @@ ggplot(DayHourCounts, aes(x = Hour, y = Var1)) +
 
 ## Making a Wordcloud of email bodies
 
-
 #### Create a corpus using the bodies variable
 
 ```{r 20}
@@ -393,3 +363,69 @@ wordcloud(colnames(allBodies), colSums(allBodies), scale = c(2.5,0.25), max.word
 
 1. deleting some unimportant mails, like private conversation about vacation or amazon.com mails ...
 2. Creating a network and graph: Person1 $\overrightarrow{writes mail to}$ Person2 $\overrightarrow{receives from}$ Person3 and so on
+
+
+## C5.0 Model
+```{r}
+library(C50)
+model_tree <- C5.0(poi ~ ., select(scaled_training, -name)) #Fit model
+summary(model_tree) #We can peek into the tree model
+plot(model_tree) #plot
+train_pred_tree <- predict(model_tree, select(scaled_training, -name)) #predict
+mean(train_pred_tree == scaled_training$poi) #Calculate accuracy - 0.96
+
+test_pred_tree <- predict(model_tree, select(scaled_test, -name)) #predict
+mean(test_pred_tree == scaled_test$poi) #Calculate accuracy - 0.69
+
+train_accuracy <- confusionMatrix(train_pred_tree, scaled_training$poi)$overall['Accuracy']
+
+train_cm <- table(train_pred_tree, scaled_training$poi)
+cm <- table(test_pred_tree, scaled_test$poi)
+
+precision(cm,relevant='True')  # 0.083
+recall(cm,relevant='True') # 0.14
+
+precision(train_cm,relevant='True') # what % of tuples that the classifier labeled as positive are actually positive
+recall(train_cm,relevant='True') # what % of positive tuples did the classifier label as positive
+```
+## SMOTE - Improves Recall rate to 85.7%
+```{r}
+model.down <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
+
+test_data <- select(scaled_test, -name)
+test_pred_model_smote <- predict(model.down, newdata = test_data)
+
+cm <- table(test_data, scaled_test$poi)
+confusionMatrix(cm)
+precision(cm,relevant='True')  
+recall(cm,relevant='True')
+F_meas(cm,relevant='True')
+```
+
+## Ensemble
+```{r}
+library(caretEnsemble)
+library(caret)
+folds <- createFolds(scaled_training$poi , k = 5)
+#We specify summaryFunction so that we can use ROC as our metric for primary model selection later
+control <- trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
+algos <- c('rf','nnet')
+models <- caretList(poi ~ . , data=scaled_training, trControl=control, metric='ROC', methodList=algos)
+models_perf <- resamples(models)
+summary(models_perf)
+modelCor(models_perf)
+
+train_pred_rf <- predict(models$rf, scaled_training) #predict
+mean(train_pred_rf == scaled_training$poi) #Calculate accuracy
+test_pred_rf <- predict(model_tree, scaled_test) #predict
+mean(test_pred_rf == scaled_test$poi) #Calculate accuracy
+
+train_cm <- table(train_pred_tree, scaled_training$poi)
+cm <- table(test_pred_rf, scaled_test$poi)
+
+precision(cm,relevant='True')  
+recall(cm,relevant='True')
+
+precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
+recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
+```
