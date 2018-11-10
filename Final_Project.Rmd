@@ -189,7 +189,45 @@ library(rpart)
 
 ## 3B - Baseline NNet Model
 ```{r}
+library(nnet)
+train2 = cbind(train_features_df,train_poi)
+test2 = cbind(test_features_df,test_poi)
 
+train2[is.na(train2)] = 0
+test2[is.na(test2)] = 0
+
+nn2 = train(poi ~., method = 'nnet', data = train2)
+summary(nn2)
+
+nn2_pred = predict(nn2, train_features_df)
+mean(nn2_pred == train_poi$poi)
+confusionMatrix(nn2_pred, train_poi$poi) #Training accuracy 
+# test data pred
+test_pred1 = predict(nn2, test_features_df)
+mean(test_pred1 == test_poi$poi)
+confusionMatrix(test_pred1, test_poi$poi) #Testing accuracy 
+
+# tuning the model
+cvCtrl = trainControl(method="cv", number = 5)
+grid = expand.grid(size = 2, decay = 0)
+nn3 = train(poi ~., method = 'nnet', data = train2, trControl = cvCtrl, tuneGrid = grid, tuneLenght = 5)
+nn3_pred = predict(nn3, train2)
+confusionMatrix(nn3_pred, train_poi$poi) #Training accuracy 
+# test data pred 
+test_pred2 = predict(nn3, test2)
+confusionMatrix(test_pred2, test_poi$poi) #Testing accuracy
+
+#Precision-recall testing
+train_labels = train_poi$poi
+test_labels = test_poi$poi
+#Precision-recall curve for model nn2
+pred = ROCR::prediction(as.numeric(test_pred1), as.numeric(test_labels))
+perf1 = performance(pred, "prec", "rec")
+plot(perf1) # Very low  precisions
+#Precision-recall curve for model nn3
+pred2 = ROCR::prediction(as.numeric(test_pred2), as.numeric(test_labels))
+perf2 = performance(pred2, "prec", "rec")
+plot(perf2) # Very low  precisions
 ```
 
 
