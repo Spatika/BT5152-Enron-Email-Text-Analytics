@@ -1,7 +1,6 @@
 #load packages
 library(caret)
 library(tidyverse)
-# library(nnet)
 
 #load data
 data = read.csv("enron_cleaned.csv", stringsAsFactors = F)
