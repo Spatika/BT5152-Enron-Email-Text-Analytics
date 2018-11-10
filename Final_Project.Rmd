@@ -89,36 +89,36 @@ tf_idf_features <- tf_idf_features[, -nzv_columns]
 ## LDA FOR DOCUMENT-TOPIC DIST AS FEATURES
 ```{r}
 # need weightTf matrix, not Tf-IDF
-dtm_control2 <- list(weighting = weightTf)
-email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
-
-dtm_control2$dictionary <- findFreqTerms(email_dtm2, lowfreq = 100)
-email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
-
-# Remove docs which all frequencies are zeros (side effect of high frequency terms filtering during pre-processing)
-
-row_totals <- apply(email_dtm2 , 1, sum)
-email_dtm2 <- email_dtm2[apply(email_dtm2 , 1, sum) > 0,]
-
-heldout_index <- sample(email_dtm2$nrow*0.1)
-
-ks <- seq(5, 10, 1)
-
-topic_models <- parSapply(cl = cl, ks, function(k, data) topicmodels::LDA(data, k = k, method = "Gibbs"), data = email_dtm2[-heldout_index,])
-
-perplexities <- parSapply(cl = cl, topic_models, function(m, data) topicmodels::perplexity(m, data, use_theta = TRUE, estimate_theta = TRUE), data = email_dtm2[heldout_index,])
-
-optimal_idx <- which.min(perplexities)
-
-# get document-topic dist for all of email_dtm2 with posterior, then use those as features, add to features_df # # --> need to preserve names 
-docs_topics <- posterior(topic_models[[optimal_idx]], email_dtm2)
-
-document_topic_dist <- docs_topics[["topics"]]
-
-# Make sure to stop cluster *plus* insert serial backend
-stopCluster(cl); print("Cluster stopped.")
-# insert serial backend, otherwise error in repetetive tasks
-registerDoSEQ()
+# dtm_control2 <- list(weighting = weightTf)
+# email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
+# 
+# dtm_control2$dictionary <- findFreqTerms(email_dtm2, lowfreq = 100)
+# email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
+# 
+# # Remove docs which all frequencies are zeros (side effect of high frequency terms filtering during pre-processing)
+# 
+# row_totals <- apply(email_dtm2 , 1, sum)
+# email_dtm2 <- email_dtm2[apply(email_dtm2 , 1, sum) > 0,]
+# 
+# heldout_index <- sample(email_dtm2$nrow*0.1)
+# 
+# ks <- seq(5, 10, 1)
+# 
+# topic_models <- parSapply(cl = cl, ks, function(k, data) topicmodels::LDA(data, k = k, method = "Gibbs"), data = email_dtm2[-heldout_index,])
+# 
+# perplexities <- parSapply(cl = cl, topic_models, function(m, data) topicmodels::perplexity(m, data, use_theta = TRUE, estimate_theta = TRUE), data = email_dtm2[heldout_index,])
+# 
+# optimal_idx <- which.min(perplexities)
+# 
+# # get document-topic dist for all of email_dtm2 with posterior, then use those as features, add to features_df # # --> need to preserve names 
+# docs_topics <- posterior(topic_models[[optimal_idx]], email_dtm2)
+# 
+# document_topic_dist <- docs_topics[["topics"]]
+# 
+# # Make sure to stop cluster *plus* insert serial backend
+# stopCluster(cl); print("Cluster stopped.")
+# # insert serial backend, otherwise error in repetetive tasks
+# registerDoSEQ()
 ```
 
 ## Scale numerical variables and  
@@ -239,10 +239,10 @@ folds <- createFolds(train_poi$poi , k = 5)
 #We specify summaryFunction so that we can use ROC as our metric for primary model selection later
 control <- trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
 algos <- c('rf','nnet')
-models <- caretList(poi ~ . , data=cbind(train_features_df, train_poi$poi), trControl=control, metric='ROC', methodList=algos)
-models_perf <- resamples(models)
-summary(models_perf)
-modelCor(models_perf)
+# models <- caretList(train_poi$poi ~ . , data=cbind(train_features_df, train_poi$poi), trControl=control, metric='ROC', methodList=algos)
+# models_perf <- resamples(models)
+# summary(models_perf)
+# modelCor(models_perf)
 ```
 
 ### 3D - Features Engineering
