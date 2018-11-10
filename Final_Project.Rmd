@@ -121,9 +121,14 @@ stopCluster(cl); print("Cluster stopped.")
 registerDoSEQ()
 ```
 
+## Combine Text Features to original feature list
+```{r}
+merged_features <- merged[,-c(1,2,3)]
+merged_features <- cbind(merged_features, tf_idf_features)
+```
+
 ## 3A - Split into training and validation and perform scaling
 ```{r}
-enron$poi <- factor(enron$poi)
 normalize <- function(x) { 
   return((x - min(x)) / (max(x) - min(x)))
 }
@@ -132,7 +137,7 @@ denormalize <- function(x, min_x, max_x) {
   return(x * (max_x - min_x) + min_x) 
 }
 
-enron_train <- enron %>% sample_frac(3/5)
+enron_train <- merged %>% sample_frac(3/5)
 enron_test <- anti_join(enron,enron_train, by = 'name') 
 
 scaled_training <- enron_train %>% mutate_if(is.numeric, normalize)
