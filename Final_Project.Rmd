@@ -9,14 +9,66 @@ library(SnowballC)
 library(RColorBrewer)
 library(wordcloud)
 library(ROCR)
-library("corrplot")
-library("MASS")
+library(parallel)
+library(doParallel)
+library(tm)
+library(caret)
+library(plyr)
+library(dplyr)
+library(purrr)
+library(stringr)
+library(jsonlite)
+library(corrplot)
+library(topicmodels)
+library(tidytext)
+library(tibble)
+library(text2vec)
+library(tidyr)
 ```
 ### Read Datasets
 ```{r}
-emails <- read.csv("emails.csv", stringsAsFactors = FALSE)
+emails <- readxl::read_xlsx("email_data.xlsx")
 enron <- read.csv("enron_cleaned.csv", stringsAsFactors = FALSE)
+merged <- merge(emails, enron, by.x = "X-From", by.y = "X")
+colnames(merged)
+merged <- merged[,-2]
+merged$poi <- as.factor(merged$poi)
 ```
+```{r}
+email_corpus <- VCorpus(VectorSource(merged$content))
+email_corpus <- tm_map(email_corpus, content_transformer(tolower))
+email_corpus <- tm_map(email_corpus, content_transformer(gsub), pattern="\\W",replace=" ") # remove emojis
+email_corpus <- tm_map(email_corpus, removeNumbers) # remove numbers
+email_corpus <- tm_map(email_corpus, removeWords, stopwords()) # remove stop words
+email_corpus <- tm_map(email_corpus, removePunctuation) # remove punctuation
+email_corpus <- tm_map(email_corpus, stemDocument)
+conv2space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+email_corpus <- tm_map(email_corpus, conv2space, "/")
+email_corpus <- tm_map(email_corpus, conv2space, "@")
+email_corpus <- tm_map(email_corpus, conv2space, "!")
+email_corpus <- tm_map(email_corpus, stripWhitespace) # eliminate unneeded whitespace
+
+dtm_control <- list(weighting = function(x) weightTfIdf(x, normalize = FALSE))
+email_dtm <- DocumentTermMatrix(email_corpus, control = dtm_control)
+features_df <- tbl_df(as.matrix(email_dtm))
+nzv_columns <- nearZeroVar(features_df)
+features_df <- features_df[, -nzv_columns]
+
+ctrl <- trainControl(method = 'cv', number = 3,verboseIter = TRUE)
+rf_mod <- train(x = features_df, 
+                y = as.factor(merged$poi), 
+                method = "ranger",
+                trControl = ctrl,
+                tuneGrid = data.frame(mtry = floor(sqrt(dim(features_df)[2])),
+                                      splitrule = "gini",
+                                      min.node.size = 1))
+
+train_pred <- predict(rf_mod, features_df)
+train_cm = as.matrix(table(Actual=merged$poi, Predicted=train_pred))
+train_cm
+```
+
+
 ## Data Exploration
 ```{r}
 #We have 18 persons of interest out of 146 people
@@ -98,8 +150,15 @@ recall(train_cm,relevant='True') #what % of positive tuples did the classifier l
 ```
 ## SMOTE - Improves Recall rate to 85.7%
 ```{r}
-model.down <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
-cm <- table(predict(model.down, select(scaled_test, -name)), scaled_test$poi)
+model <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5))
+cm <- table(predict(model, select(scaled_test, -name)), scaled_test$poi)
+confusionMatrix(cm)
+precision(cm,relevant='True')  
+recall(cm,relevant='True')
+F_meas(cm,relevant='True')
+
+model.smote <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
+cm <- table(predict(model.smote, select(scaled_test, -name)), scaled_test$poi)
 confusionMatrix(cm)
 precision(cm,relevant='True')  
 recall(cm,relevant='True')
