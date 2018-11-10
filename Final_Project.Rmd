@@ -1,15 +1,8 @@
 ### Libraries
 ```{r}
 #library(formattable) # output is easier to read an well formatted
-library(tidyverse)
-
-library(stringr) # String manipulation, Regex
-library(plyr)
 library(ggplot2)
 library(tm)
-library(SnowballC)
-library(RColorBrewer)
-library(wordcloud)
 library(ROCR)
 library(parallel)
 library(doParallel)
@@ -17,19 +10,12 @@ library(tm)
 library(caret)
 library(plyr)
 library(dplyr)
-library(purrr)
 library(stringr)
 library(jsonlite)
-library(corrplot)
 library(topicmodels)
 library(tidytext)
-library(tibble)
-library(text2vec)
 library(tidyr)
-
-library(parallel)
-library(doParallel)
-
+library(tibble)
 ```
 ### Start cluster
 ```{r}
@@ -42,9 +28,38 @@ tm_parLapply_engine(cl)
 emails <- readxl::read_xlsx("email_data.xlsx")
 enron <- read.csv("enron_cleaned.csv", stringsAsFactors = FALSE)
 merged <- merge(emails, enron, by.x = "X-From", by.y = "X")
-colnames(merged)
 merged <- merged[,-2]
 merged$poi <- as.factor(merged$poi)
+```
+
+## Data Exploration
+```{r}
+payment_data <- c('salary',
+                'bonus',
+                'long_term_incentive',
+                'deferred_income',
+                'deferral_payments',
+                'loan_advances',
+                'other',
+                'expenses',                
+                'director_fees', 
+                'total_payments')
+
+stock_data <- c('exercised_stock_options',
+              'restricted_stock',
+              'restricted_stock_deferred',
+              'total_stock_value')
+
+email_data <- c("to_messages",
+              'from_messages',
+              'from_poi_to_this_person',
+              'from_this_person_to_poi',
+              'shared_receipt_with_poi')
+
+features_list <- paste(c('poi'), payment_data , stock_data ,email_data)
+nrow(enron)
+sum(enron$poi)
+summary(enron)
 ```
 
 ## TF-IDF FEATURES
@@ -64,22 +79,9 @@ email_corpus <- tm_map(email_corpus, stripWhitespace) # eliminate unneeded white
 
 dtm_control <- list(weighting = function(x) weightTfIdf(x, normalize = FALSE))
 email_dtm <- DocumentTermMatrix(email_corpus, control = dtm_control)
-features_df <- tbl_df(as.matrix(email_dtm))
-nzv_columns <- nearZeroVar(features_df)
-features_df <- features_df[, -nzv_columns]
-
-ctrl <- trainControl(method = 'cv', number = 3,verboseIter = TRUE)
-rf_mod <- train(x = features_df, 
-                y = as.factor(merged$poi), 
-                method = "ranger",
-                trControl = ctrl,
-                tuneGrid = data.frame(mtry = floor(sqrt(dim(features_df)[2])),
-                                      splitrule = "gini",
-                                      min.node.size = 1))
-
-train_pred <- predict(rf_mod, features_df)
-train_cm = as.matrix(table(Actual=merged$poi, Predicted=train_pred))
-train_cm
+tf_idf_features <- tbl_df(as.matrix(email_dtm))
+nzv_columns <- nearZeroVar(tf_idf_features)
+tf_idf_features <- tf_idf_features[, -nzv_columns]
 ```
 ## LDA FOR DOCUMENT-TOPIC DIST AS FEATURES
 ```{r}
@@ -116,46 +118,14 @@ stopCluster(cl); print("Cluster stopped.")
 registerDoSEQ()
 ```
 
-## Data Exploration
+### Features Engineering
 ```{r}
-#We have 18 persons of interest out of 146 people
-nrow(enron)
-sum(enron$poi)
-summary(enron)
-#Loan Advances : Money provided by the bank to entities for fulfilling their short term requirements is known as Advances.
-#There are many legal formalities in case of loans as compared to advances.
-colnames(enron)[1] <- "name"
-#corrplot(cor(select(enron, -name), method = "circle"))
-#enron$id <- seq.int(nrow(enron)) 
-```
-## Cleaning Data Set
-```{r}
-payment_data <- c('salary',
-                'bonus',
-                'long_term_incentive',
-                'deferred_income',
-                'deferral_payments',
-                'loan_advances',
-                'other',
-                'expenses',                
-                'director_fees', 
-                'total_payments')
-
-stock_data <- c('exercised_stock_options',
-              'restricted_stock',
-              'restricted_stock_deferred',
-              'total_stock_value')
-
-email_data <- c("to_messages",
-              'from_messages',
-              'from_poi_to_this_person',
-              'from_this_person_to_poi',
-              'shared_receipt_with_poi')
-
-features_list <- paste(c('poi'), payment_data , stock_data ,email_data)
+merged$to_poi_ratio = merged$from_poi_to_this_person / merged$to_messages
+merged$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
+merged$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
 ```
 
-## Split into training and validation and perform scaling
+## 3A - Split into training and validation and perform scaling
 ```{r}
 enron$poi <- factor(enron$poi)
 normalize <- function(x) { 
@@ -173,7 +143,7 @@ scaled_training <- enron_train %>% mutate_if(is.numeric, normalize)
 scaled_test <- enron_test %>% mutate_if(is.numeric, normalize)
 ```
 
-## C5.0 Model
+## 3B - Baseline C5.0 Model
 ```{r}
 library(C50)
 model_tree <- C5.0(poi ~ ., select(scaled_training, -name)) #Fit model
@@ -195,6 +165,7 @@ recall(cm,relevant='True')
 precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
 recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
+
 ## SMOTE - Improves Recall rate to 85.7%
 ```{r}
 model <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5))
@@ -212,7 +183,23 @@ recall(cm,relevant='True')
 F_meas(cm,relevant='True')
 ```
 
-## Ensemble
+## 3C - Random Forest
+```{r}
+ctrl <- trainControl(method = 'cv', number = 3,verboseIter = TRUE)
+rf_mod <- train(x = features_df, 
+                y = as.factor(merged$poi), 
+                method = "ranger",
+                trControl = ctrl,
+                tuneGrid = data.frame(mtry = floor(sqrt(dim(features_df)[2])),
+                                      splitrule = "gini",
+                                      min.node.size = 1))
+
+train_pred <- predict(rf_mod, features_df)
+train_cm = as.matrix(table(Actual=merged$poi, Predicted=train_pred))
+train_cm
+```
+
+## 3C - Ensemble
 ```{r}
 library(caretEnsemble)
 library(caret)
@@ -239,262 +226,3 @@ recall(cm,relevant='True')
 precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
 recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
-###  locate the blank line "\n\n"
-```{r}
-breaks <- str_locate(emails$message, "\n\n")
-```
-
-
-### Extract headers and bodies
-
-```{r}
-headers <- str_sub(emails$message, end = breaks[,1] - 1)
-bodies <- str_sub(emails$message, start = breaks[,2] + 1)
-```
-
-
-
-
-
-### Splitting the email header
-
-
-```{r}
-parseHeader <- function(header){
-  MessageID <- str_sub(str_extract(header, "^Message-ID:.*"), start = 12)
-  Date <- str_sub(str_extract(header,"Date:.*"), start = 7)
-  From <- str_sub(str_extract(header,"From:.*"), start = 7)
-  To <- str_sub(str_extract(header,"To:.*"), start = 5)
-  Subject <- str_sub(str_extract(header,"Subject:.*"), start = 10)
-  #X-cc <- str_sub(str_extract(header,"X\\-cc:.*"), start = 7)
-  #X-bcc <- str_sub(str_extract(header,"X\\-bcc:.*"), start = 8)
-  
-  headerParsed <- data.frame(MessageID, Date, From, To, Subject, 
-                             stringsAsFactors = FALSE)
-  return(headerParsed)
-}
-```
-
-
-```{r}
-headerParsed <- parseHeader(headers)
-```
-
-
-### Conversion of dates
-
-```{r}
-## UTC time
-datesTest <- strptime(headerParsed$Date, format = "%a, %d %b %Y %H:%M:%S %z")
-## localtime
-datesLocal <- strptime(headerParsed$Date, format = "%a, %d %b %Y %H:%M:%S")
-```
-
-
-### Copy dates 
-
-```{r}
-headerParsed$Date <- datesTest
-headerParsed$DateLocal <- datesLocal
-# remove dates Test
-rm(datesTest)
-rm(datesLocal)
-```
-
-
-
-### File column
-
-```{r}
-## split 
-fileSplit <- str_split(emails$file, "/")
-fileSplit <-rbind.fill(lapply(fileSplit, function(X) data.frame(t(X))))
-```
-
-### Creating one dataset
-
-```{r}
-emails <- data.frame(fileSplit, headerParsed, bodies, stringsAsFactors = FALSE)
-colnames(emails)[1] <- "User"
-```
-
-
-
-### Cleaning up 
-
-
-```{r}
-rm(headerParsed)
-rm(bodies)
-rm(headers)
-rm(breaks)
-rm(fileSplit)
-
-# garbage collection
-gc()
-```
-
-
-
-
-## Some Top 20s 
-
-### Mail writers
-
-```{r}
-nrow(emails)
-
-a <- emails[emails$From == 'kenneth.lay@enron.com' & emails$Subject == 'Associate/Analyst Program',][1,"bodies"]
-head(sort(table(emails$From), decreasing = TRUE), n=20)
-```
-
-
-
-### Mail recipients
-```{r}
-head(sort(table(emails$To), decreasing = TRUE), n=20)
-```
-
-
-
-### User
-
-```{r 14}
-head(sort(table(emails$User), decreasing = TRUE), 20)
-```
-
-
-
-## Weekdays and Hour of day
-
-
-```{r 15}
-# extract weekday
-emails$Weekday <- weekdays(emails$DateLocal)
-# extract Hour of day
-emails$Hour <- emails$DateLocal$hour
-
-```
-
-## Weekdays Analysis
-
-
-```{r}
-WeekdayCounts <- as.data.frame(table(emails$Weekday))
-str(WeekdayCounts)
-WeekdayCounts$Var1 <- factor(WeekdayCounts$Var1, ordered=TRUE, 
-                             levels=c( "Monday", "Tuesday", "Wednesday", "Thursday", "Friday","Saturday", "Sunday"))
-DayHourCounts <- as.data.frame(table(emails$Weekday, emails$Hour))
-str(DayHourCounts)
-DayHourCounts$Hour <- as.numeric(as.character(DayHourCounts$Var2))
-DayHourCounts$Var1 <- factor(WeekdayCounts$Var1, ordered=TRUE, 
-                             levels=c( "Monday", "Tuesday", "Wednesday", "Thursday", "Friday","Saturday", "Sunday"))
-
-```
-
-
-
-
-
-### Plot number of emails per Weekday
-
-```{r}
-ggplot(WeekdayCounts, aes(x=Var1, y=Freq)) + geom_line(aes(group=1))  
-```
-
-
-### Plot number of emails per Hour per Day
-
-```{r}
-ggplot(DayHourCounts, aes(x=Hour, y=Freq)) + 
-  geom_line(aes(group=Var1, color=Var1), size=1)
-```
-
-
-
-### Heatmap: emails per Hour per Day
-
-```{r}
-
-ggplot(DayHourCounts, aes(x = Hour, y = Var1)) + 
-  geom_tile(aes(fill = Freq)) + 
-  scale_fill_gradient(name="Total emails", low = "lightgrey", high = "darkblue") + 
-  theme(axis.title.y = element_blank())
-
-```
-
-
-## Making a Wordcloud of email bodies
-
-
-#### Create a corpus using the bodies variable
-
-```{r 20}
-corpus <- Corpus(VectorSource(emails$bodies[1:100000]))
-```
-
-#### Convert corpus to lowercase 
-```{r}
-corpus <- tm_map(corpus,tolower)
-corpus <- tm_map(corpus, PlainTextDocument)
-```
-
-
-#### Remove punctuation from  corpus
-```{r}
-corpus <- tm_map(corpus, removePunctuation)
-```
-
-#### Remove all English-language stopwords
-
-```{r}
-corpus <- tm_map(corpus, removeWords, stopwords("english"))
-```
-#### Remove some more words
-```{r}
-corpus <- tm_map(corpus, removeWords, c("just", "will", "thanks","please", "can", "let", "said", "say", "per"))
-```
-
-#### Stem document 
-```{r 25}
-corpus <- tm_map(corpus, stemDocument)
-
-```
-
-
-#### Build a document-term matrix out of the corpus
-```{r}
-bodiesDTM <- DocumentTermMatrix(corpus)
-```
-#### remove Sparse Terms
-
-```{r}
-sparseDTM <- removeSparseTerms(bodiesDTM, 0.99)
-sparseDTM
-# some cleaning due to memory intensive operations following
-rm(corpus)
-rm(bodiesDTM)
-gc() 
-
-```
-
-#### Convert the document-term matrix to a data frame called allBodies
-
-```{r}
-allBodies <- as.data.frame(as.matrix(sparse))
-```
-
-#### Building wordcloud
-
-```{r}
-par(bg = "gray27") # setting background color to a dark grey
-pal <- brewer.pal(7,"Dark2") # Choosing a color palette
-
-# Wordcloud 
-wordcloud(colnames(allBodies), colSums(allBodies), scale = c(2.5,0.25), max.words = 150, colors = pal)
-```
-
-## TODO
-
-1. deleting some unimportant mails, like private conversation about vacation or amazon.com mails ...
-2. Creating a network and graph: Person1 $\overrightarrow{writes mail to}$ Person2 $\overrightarrow{receives from}$ Person3 and so on
