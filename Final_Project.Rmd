@@ -1,6 +1,8 @@
 ### Libraries
 ```{r}
 #library(formattable) # output is easier to read an well formatted
+library(tidyverse)
+
 library(stringr) # String manipulation, Regex
 library(plyr)
 library(ggplot2)
@@ -24,6 +26,16 @@ library(tidytext)
 library(tibble)
 library(text2vec)
 library(tidyr)
+
+library(parallel)
+library(doParallel)
+
+```
+### Start cluster
+```{r}
+cl = makePSOCKcluster(detectCores() - 1)
+registerDoParallel(cl)
+tm_parLapply_engine(cl)
 ```
 ### Read Datasets
 ```{r}
@@ -34,6 +46,8 @@ colnames(merged)
 merged <- merged[,-2]
 merged$poi <- as.factor(merged$poi)
 ```
+
+## TF-IDF FEATURES
 ```{r}
 email_corpus <- VCorpus(VectorSource(merged$content))
 email_corpus <- tm_map(email_corpus, content_transformer(tolower))
@@ -67,7 +81,40 @@ train_pred <- predict(rf_mod, features_df)
 train_cm = as.matrix(table(Actual=merged$poi, Predicted=train_pred))
 train_cm
 ```
+## LDA FOR DOCUMENT-TOPIC DIST AS FEATURES
+```{r}
+# need weightTf matrix, not Tf-IDF
+dtm_control2 <- list(weighting = weightTf)
+email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
 
+dtm_control2$dictionary <- findFreqTerms(email_dtm2, lowfreq = 100)
+email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
+
+# Remove docs which all frequencies are zeros (side effect of high frequency terms filtering during pre-processing)
+
+row_totals <- apply(email_dtm2 , 1, sum)
+email_dtm2 <- email_dtm2[apply(email_dtm2 , 1, sum) > 0,]
+
+heldout_index <- sample(email_dtm2$nrow*0.1)
+
+ks <- seq(5, 10, 1)
+
+topic_models <- parSapply(cl = cl, ks, function(k, data) topicmodels::LDA(data, k = k, method = "Gibbs"), data = email_dtm2[-heldout_index,])
+
+perplexities <- parSapply(cl = cl, topic_models, function(m, data) topicmodels::perplexity(m, data, use_theta = TRUE, estimate_theta = TRUE), data = email_dtm2[heldout_index,])
+
+optimal_idx <- which.min(perplexities)
+
+# get document-topic dist for all of email_dtm2 with posterior, then use those as features, add to features_df # # --> need to preserve names 
+docs_topics <- posterior(topic_models[[optimal_idx]], email_dtm2)
+
+document_topic_dist <- docs_topics[["topics"]]
+
+# Make sure to stop cluster *plus* insert serial backend
+stopCluster(cl); print("Cluster stopped.")
+# insert serial backend, otherwise error in repetetive tasks
+registerDoSEQ()
+```
 
 ## Data Exploration
 ```{r}
