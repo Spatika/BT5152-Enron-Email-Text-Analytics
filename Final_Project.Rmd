@@ -50,16 +50,18 @@ stock_data <- c('exercised_stock_options',
               'restricted_stock_deferred',
               'total_stock_value')
 
-email_data <- c("to_messages",
+email_data <- c("content",
+              "to_messages",
               'from_messages',
               'from_poi_to_this_person',
               'from_this_person_to_poi',
               'shared_receipt_with_poi')
 
 features_list <- paste(c('poi'), payment_data , stock_data ,email_data)
-nrow(enron)
-sum(enron$poi)
-summary(enron)
+
+nrow(merged)
+sum(as.numeric(merged$poi)-1)
+summary(merged)
 ```
 
 ## TF-IDF FEATURES
