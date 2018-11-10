@@ -176,19 +176,13 @@ recall(test_cm,relevant='True') #what % of positive tuples did the classifier la
 rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5))
 test_cm <- table(predict(rf_model, test_features_df), test_poi$poi)
 confusionMatrix(test_cm)
-precision(test_cm,relevant='True')  
-recall(test_cm,relevant='True')
-F_meas(test_cm,relevant='True')
 
 rf_model_smote <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
 test_cm <- table(predict(rf_model_smote, test_features_df), test_poi$poi)
 confusionMatrix(test_cm)
-precision(test_cm,relevant='True')  
-recall(test_cm,relevant='True')
-F_meas(test_cm,relevant='True')
 ```
 
-## 3C - Random Forest
+## 3C - Random Forest using Ranger
 ```{r}
 ctrl <- trainControl(method = 'cv', number = 3,verboseIter = TRUE)
 ranger_mod <- train(x = train_features_df, 
@@ -202,34 +196,24 @@ ranger_mod <- train(x = train_features_df,
 train_pred <- predict(ranger_mod, train_features_df)
 train_cm = as.matrix(table(Actual=train_poi$po, Predicted=train_pred))
 train_cm
+
+test_pred <- predict(ranger_mod, test_features_df)
+test_cm = as.matrix(table(Actual=test_poi$poi, Predicted=test_pred))
+test_cm
 ```
 
 ## 3C - Ensemble
 ```{r}
 library(caretEnsemble)
 library(caret)
-folds <- createFolds(scaled_training$poi , k = 5)
+folds <- createFolds(train_poi$poi , k = 5)
 #We specify summaryFunction so that we can use ROC as our metric for primary model selection later
 control <- trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
 algos <- c('rf','nnet')
-models <- caretList(poi ~ . , data=scaled_training, trControl=control, metric='ROC', methodList=algos)
+models <- caretList(poi ~ . , data=cbind(train_features_df, train_poi$poi), trControl=control, metric='ROC', methodList=algos)
 models_perf <- resamples(models)
 summary(models_perf)
 modelCor(models_perf)
-
-train_pred_rf <- predict(models$rf, scaled_training) #predict
-mean(train_pred_rf == scaled_training$poi) #Calculate accuracy
-test_pred_rf <- predict(model_tree, scaled_test) #predict
-mean(test_pred_rf == scaled_test$poi) #Calculate accuracy
-
-train_cm <- table(train_pred_tree, scaled_training$poi)
-cm <- table(test_pred_rf, scaled_test$poi)
-
-precision(cm,relevant='True')  
-recall(cm,relevant='True')
-
-precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
-recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
 
 ### 3D - Features Engineering
