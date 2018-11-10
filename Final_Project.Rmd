@@ -16,6 +16,7 @@ library(topicmodels)
 library(tidytext)
 library(tidyr)
 library(tibble)
+library(tm.lexicon.GeneralInquirer)
 ```
 ### Start cluster
 ```{r}
