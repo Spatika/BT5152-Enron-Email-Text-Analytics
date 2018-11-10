@@ -115,6 +115,8 @@ optimal_idx <- which.min(perplexities)
 docs_topics <- posterior(topic_models[[optimal_idx]], email_dtm2)
 document_topic_dist <- docs_topics[["topics"]]
 
+colnames(document_topic_dist) <- paste("Topic", colnames(document_topic_dist), sep = "_")
+
 # Make sure to stop cluster *plus* insert serial backend
 stopCluster(cl); print("Cluster stopped.")
 # insert serial backend, otherwise error in repetetive tasks
