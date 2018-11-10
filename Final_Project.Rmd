@@ -171,6 +171,26 @@ precision(test_cm,relevant='True')   #what % of tuples that the classifier label
 recall(test_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
 
+## 3B - Baseline KNN Model
+```{r}
+
+```
+## 3B - Baseline RPart Model
+```{r}
+
+```
+
+## 3B - Baseline NNet Model
+```{r}
+
+```
+
+
+## 3B - Baseline Support Vector Machine Model
+```{r}
+
+```
+
 ## Random Forest SMOTE - Improves Recall rate to 85.7%
 ```{r}
 rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5))
@@ -202,7 +222,16 @@ test_cm = as.matrix(table(Actual=test_poi$poi, Predicted=test_pred))
 test_cm
 ```
 
-## 3C - Ensemble
+## 3C - Bagging
+```{r}
+
+```
+## 3C - Boosting
+```{r}
+
+```
+
+## 3C - Ensemble Stacking
 ```{r}
 library(caretEnsemble)
 library(caret)
@@ -221,4 +250,9 @@ modelCor(models_perf)
 merged$to_poi_ratio = merged$from_poi_to_this_person / merged$to_messages
 merged$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
 merged$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
+```
+
+### 3A and 3B models again with engineered features
+```{r}
+
 ```
