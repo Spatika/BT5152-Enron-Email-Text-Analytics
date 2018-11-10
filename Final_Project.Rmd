@@ -121,13 +121,7 @@ stopCluster(cl); print("Cluster stopped.")
 registerDoSEQ()
 ```
 
-## Combine Text Features to original feature list
-```{r}
-merged_features <- merged[,-c(1,2,3)]
-merged_features <- cbind(merged_features, tf_idf_features)
-```
-
-## 3A - Split into training and validation and perform scaling
+## Scale numerical variables and  
 ```{r}
 normalize <- function(x) { 
   return((x - min(x)) / (max(x) - min(x)))
@@ -137,34 +131,44 @@ denormalize <- function(x, min_x, max_x) {
   return(x * (max_x - min_x) + min_x) 
 }
 
-enron_train <- merged %>% sample_frac(3/5)
-enron_test <- anti_join(enron,enron_train, by = 'name') 
+combined_features_df <- merged[,-c(1,2,3)]
+combined_features_df <- combined_features_df %>% mutate_if(is.numeric, normalize)
+```
 
-scaled_training <- enron_train %>% mutate_if(is.numeric, normalize)
-scaled_test <- enron_test %>% mutate_if(is.numeric, normalize)
+##Combine Text Features to original feature list
+```{r}
+colnames(combined_features_df) <- paste("Main", colnames(combined_features_df), sep = "_")
+combined_features_df <- cbind(combined_features_df, tf_idf_features)
+```
+
+## 3A - Split into training and validation and perform scaling
+```{r}
+train_idx <- sample(nrow(combined_features_df) * 0.60)
+train_features_df <- combined_features_df[train_idx,]
+test_features_df <- combined_features_df[-train_idx,]
+train_poi <- as.data.frame(merged[train_idx,"poi"])
+colnames(train_poi) <- c("poi")
+test_poi <- as.data.frame(merged[-train_idx,"poi"])
+colnames(test_poi) <- c("poi")
 ```
 
 ## 3B - Baseline C5.0 Model
 ```{r}
 library(C50)
-model_tree <- C5.0(poi ~ ., select(scaled_training, -name)) #Fit model
+model_tree <- C5.0(poi ~ ., cbind(train_features_df,train_poi)) #Fit model
 summary(model_tree) #We can peek into the tree model
-plot(model_tree) #plot
-train_pred_tree <- predict(model_tree, select(scaled_training, -name)) #predict
-mean(train_pred_tree == scaled_training$poi) #Calculate accuracy
-test_pred_tree <- predict(model_tree, select(scaled_test, -name)) #predict
-mean(test_pred_tree == scaled_test$poi) #Calculate accuracy
+train_pred_tree <- predict(model_tree, train_features_df) #predict
+mean(train_pred_tree == train_poi$poi) #Calculate accuracy
+test_pred_tree <- predict(model_tree, test_features_df) #predict
+mean(test_pred_tree == test_poi$poi) #Calculate accuracy
 
-train_accuracy <- confusionMatrix(train_pred_tree, scaled_training$poi)$overall['Accuracy']
+train_cm <- table(train_pred_tree, train_poi$poi)
+test_cm <- table(test_pred_tree, test_poi$poi)
 
-train_cm <- table(train_pred_tree, scaled_training$poi)
-cm <- table(test_pred_tree, scaled_test$poi)
-
-precision(cm,relevant='True')  
-recall(cm,relevant='True')
-
-precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
-recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
+precision(train_cm,relevant='True')  
+recall(train_cm,relevant='True')
+precision(test_cm,relevant='True')   #what % of tuples that the classifier labeled as positive are actually positive
+recall(test_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
 
 ## SMOTE - Improves Recall rate to 85.7%
