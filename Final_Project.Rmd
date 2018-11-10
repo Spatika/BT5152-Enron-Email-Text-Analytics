@@ -171,36 +171,36 @@ precision(test_cm,relevant='True')   #what % of tuples that the classifier label
 recall(test_cm,relevant='True') #what % of positive tuples did the classifier label as positive
 ```
 
-## SMOTE - Improves Recall rate to 85.7%
+## Random Forest SMOTE - Improves Recall rate to 85.7%
 ```{r}
-model <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5))
-cm <- table(predict(model, select(scaled_test, -name)), scaled_test$poi)
-confusionMatrix(cm)
-precision(cm,relevant='True')  
-recall(cm,relevant='True')
-F_meas(cm,relevant='True')
+rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5))
+test_cm <- table(predict(rf_model, test_features_df), test_poi$poi)
+confusionMatrix(test_cm)
+precision(test_cm,relevant='True')  
+recall(test_cm,relevant='True')
+F_meas(test_cm,relevant='True')
 
-model.smote <- train(poi ~ ., data = select(scaled_training, -name), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
-cm <- table(predict(model.smote, select(scaled_test, -name)), scaled_test$poi)
-confusionMatrix(cm)
-precision(cm,relevant='True')  
-recall(cm,relevant='True')
-F_meas(cm,relevant='True')
+rf_model_smote <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
+test_cm <- table(predict(rf_model_smote, test_features_df), test_poi$poi)
+confusionMatrix(test_cm)
+precision(test_cm,relevant='True')  
+recall(test_cm,relevant='True')
+F_meas(test_cm,relevant='True')
 ```
 
 ## 3C - Random Forest
 ```{r}
 ctrl <- trainControl(method = 'cv', number = 3,verboseIter = TRUE)
-rf_mod <- train(x = features_df, 
-                y = as.factor(merged$poi), 
+ranger_mod <- train(x = train_features_df, 
+                y = train_poi$poi, 
                 method = "ranger",
                 trControl = ctrl,
-                tuneGrid = data.frame(mtry = floor(sqrt(dim(features_df)[2])),
+                tuneGrid = data.frame(mtry = floor(sqrt(dim(train_features_df)[2])),
                                       splitrule = "gini",
                                       min.node.size = 1))
 
-train_pred <- predict(rf_mod, features_df)
-train_cm = as.matrix(table(Actual=merged$poi, Predicted=train_pred))
+train_pred <- predict(ranger_mod, train_features_df)
+train_cm = as.matrix(table(Actual=train_poi$po, Predicted=train_pred))
 train_cm
 ```
 
