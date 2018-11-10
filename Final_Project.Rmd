@@ -66,7 +66,7 @@ sum(as.numeric(merged$poi)-1)
 summary(merged)
 ```
 
-## TF-IDF Features
+## TF-IDF/Dictionary Approach Features
 ```{r}
 email_corpus <- VCorpus(VectorSource(merged$content))
 email_corpus <- tm_map(email_corpus, content_transformer(tolower))
@@ -83,9 +83,13 @@ email_corpus <- tm_map(email_corpus, stripWhitespace) # eliminate unneeded white
 
 dtm_control <- list(weighting = function(x) weightTfIdf(x, normalize = FALSE))
 email_dtm <- DocumentTermMatrix(email_corpus, control = dtm_control)
-tf_idf_features <- tbl_df(as.matrix(email_dtm))
-nzv_columns <- nearZeroVar(tf_idf_features)
-tf_idf_features <- tf_idf_features[, -nzv_columns]
+
+# neg score, placeholder for some other dictionary approach
+tf_idf_features <- tm_term_score(email_dtm, terms_in_General_Inquirer_categories("Negativ")) 
+
+# tf_idf_features <- tbl_df(as.matrix(email_dtm))
+# nzv_columns <- nearZeroVar(tf_idf_features)
+# tf_idf_features <- tf_idf_features[, -nzv_columns]
 ```
 
 ## Document-Topic Distributions as Features
