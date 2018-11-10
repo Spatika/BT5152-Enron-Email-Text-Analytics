@@ -23,6 +23,7 @@ cl = makePSOCKcluster(detectCores() - 1)
 registerDoParallel(cl)
 tm_parLapply_engine(cl)
 ```
+
 ### Read Datasets
 ```{r}
 emails <- readxl::read_xlsx("email_data.xlsx")
@@ -118,13 +119,6 @@ document_topic_dist <- docs_topics[["topics"]]
 stopCluster(cl); print("Cluster stopped.")
 # insert serial backend, otherwise error in repetetive tasks
 registerDoSEQ()
-```
-
-### Features Engineering
-```{r}
-merged$to_poi_ratio = merged$from_poi_to_this_person / merged$to_messages
-merged$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
-merged$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
 ```
 
 ## 3A - Split into training and validation and perform scaling
@@ -227,4 +221,11 @@ recall(cm,relevant='True')
 
 precision(train_cm,relevant='True') #what % of tuples that the classifier labeled as positive are actually positive
 recall(train_cm,relevant='True') #what % of positive tuples did the classifier label as positive
+```
+
+### 3D - Features Engineering
+```{r}
+merged$to_poi_ratio = merged$from_poi_to_this_person / merged$to_messages
+merged$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
+merged$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
 ```
