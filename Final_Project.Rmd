@@ -184,6 +184,9 @@ recall(test_cm,relevant='True') #what % of positive tuples did the classifier la
 
 ## 3B - Baseline KNN Model
 ```{r}
+library(caret)
+library(tidyverse)
+
 train2 = cbind(train_features_df,train_poi)
 test2 = cbind(test_features_df,test_poi)
 train2[is.na(train2)] = 0
