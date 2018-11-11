@@ -256,26 +256,39 @@ test2 = cbind(test_features_df,test_poi)
 train2[is.na(train2)] = 0
 test2[is.na(test2)] = 0
 
-nn2 = train(poi ~., method = 'nnet', trControl = trainControl(sampling='smote'), data = train2)
-summary(nn2)
-
-nn2_pred = predict(nn2, train_features_df)
-mean(nn2_pred == train_poi$poi)
-confusionMatrix(nn2_pred, train_poi$poi, mode = 'everything') #Training accuracy 
-# test data pred
-test_pred1 = predict(nn2, test_features_df)
-mean(test_pred1 == test_poi$poi)
-confusionMatrix(test_pred1, test_poi$poi, mode = 'everything') #Testing accuracy 
+# nn2 = train(poi ~., method = 'nnet', trControl = trainControl(sampling='smote'), data = train2)
+# summary(nn2)
+# 
+# nn2_pred = predict(nn2, train_features_df)
+# mean(nn2_pred == train_poi$poi)
+# confusionMatrix(nn2_pred, train_poi$poi, mode = 'everything') #Training accuracy 
+# # test data pred
+# test_pred1 = predict(nn2, test_features_df)
+# mean(test_pred1 == test_poi$poi)
+# confusionMatrix(test_pred1, test_poi$poi, mode = 'everything') #Testing accuracy 
 
 # tuning the model
-cvCtrl = trainControl(method="cv", number = 5, sampling = 'smote')
-grid = expand.grid(size = 2, decay = 0)
-nn3 = train(poi ~., method = 'nnet', data = train2, trControl = cvCtrl, tuneGrid = grid,preProcess = c("scale", "center"), tuneLength = 5)
-nn3_pred = predict(nn3, train2)
-confusionMatrix(nn3_pred, train_poi$poi, mode = 'everything') #Training accuracy 
+# cvCtrl = trainControl(method="cv", number = 5, sampling = 'smote')
+
+grid = expand.grid(.size = c(1,2,3), .decay = c(0, 1, 2))
+
+set.seed(5152)
+model_nn = train(poi ~., method = 'nnet', data = train2, metric = "ROC",
+            trControl = control, tuneGrid = grid, preProcess = c("scale", "center"))
+
+model_nn$bestTune
+# train data pred
+nn_pred_train = predict(model_nn, train2)
+confusionMatrix(nn_pred_train, train_poi$poi, mode = 'everything') # training accuracy 
+
 # test data pred 
-test_pred2 = predict(nn3, test2)
-confusionMatrix(test_pred2, test_poi$poi, mode = 'everything') #Testing accuracy
+nn_pred_test = predict(model_nn, test2)
+confusionMatrix(nn_pred_test, test_poi$poi, mode = 'everything') # testing accuracy - 0.8431, prec - 0.925, recall - 0.8043
+
+# AUC
+test_pred_nn <- ROCR::prediction(as.numeric(predict(model_nn, test_features_df)), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_nn, "auc")@y.values) # 0.63 auc
+
 ```
 
 
