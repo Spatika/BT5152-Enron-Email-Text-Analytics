@@ -297,20 +297,27 @@ plot(perf2) # Very low  precisions
 
 ## 3B - Baseline Support Vector Machine Model
 ```{r}
-model.svm <- svm(factor(poi) ~., data = train2, kernel = "linear")
+library(caret)
+library(e1071)
+library(DMwR)
 
-#Training accuracy 0.96
+control <-  trainControl(method="cv", number = 5, sampling = 'smote')
+model.svm  <- train(factor(poi) ~., data = train2, method = "svmLinear", trControl = control)
 
-pred_svm <- predict(model.svm, train_features_df)
-mean(pred_svm == train_poi$poi)
+#Training accuracy 0.85
 
-#Testing accuracy 0.82
+pred_svm <- predict(model.svm, train2)
+mean(pred_svm == scaled_training$poi)
+
+
+#Testing accuracy 0.77
 pred_svm <- predict(model.svm, test2)
-mean(pred_svm ==  test_poi$poi)
-cm = confusionMatrix(pred_svm,  test_poi$poi)
+mean(pred_svm == scaled_test$poi)
+cm = confusionMatrix(pred_svm, scaled_test$poi)
 
-cm$byClass["Precision"] #0.815
-cm$byClass["Recall"] #1
+cm$byClass["Precision"] #0.86
+cm$byClass["Recall"] #0.84
+
 ```
 
 ## Random Forest SMOTE - Improves Recall rate to 85.7%
