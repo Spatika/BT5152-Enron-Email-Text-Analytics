@@ -184,8 +184,27 @@ recall(test_cm,relevant='True') #what % of positive tuples did the classifier la
 
 ## 3B - Baseline KNN Model
 ```{r}
+train2 = cbind(train_features_df,train_poi)
+test2 = cbind(test_features_df,test_poi)
+train2[is.na(train2)] = 0
+test2[is.na(test2)] = 0
 
+control = trainControl(method="cv", number = 5)
 
+model_knn <- train(poi ~., data = train2,method="knn",trControl = control,
+                   tuneGrid =expand.grid(k = c(3, 7, 11)))
+
+#Training accuracy 0.89%
+pred_knn_tr <- predict(model_knn,newdata =train_features_df)
+mean(pred_knn_tr == train_poi$poi)
+
+#Testing accuracy 0.85%
+pred_knn <- predict(model_knn,newdata =test_features_df)
+mean(pred_knn == test_poi$poi)
+cm = confusionMatrix(pred_knn, test_poi$poi)
+
+cm$byClass["Precision"] #0.8571429
+cm$byClass["Recall"] #1
 ```
 ## 3B - Baseline RPart Model
 ```{r}
@@ -255,7 +274,21 @@ plot(perf2) # Very low  precisions
 
 ## 3B - Baseline Support Vector Machine Model
 ```{r}
+model.svm <- svm(factor(poi) ~., data = train2, kernel = "linear")
 
+#Training accuracy 0.96
+
+pred_svm <- predict(model.svm, train_features_df)
+mean(pred_svm == train_poi$poi)
+
+
+#Testing accuracy 0.82
+pred_svm <- predict(model.svm, test2)
+mean(pred_svm ==  test_poi$poi)
+cm = confusionMatrix(pred_svm,  test_poi$poi)
+
+cm$byClass["Precision"] #0.815
+cm$byClass["Recall"] #1
 ```
 
 ## Random Forest SMOTE - Improves Recall rate to 85.7%
