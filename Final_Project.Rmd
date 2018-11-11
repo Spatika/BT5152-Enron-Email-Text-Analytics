@@ -322,7 +322,7 @@ as.numeric(performance(test_pred_svm, "auc")@y.values) # 0.756 auc
 
 ```
 
-## Random Forest SMOTE - improves Recall rate to 85.7%
+## 3C - Random Forest SMOTE - improves Recall rate to 85.7%
 ```{r}
 rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5))
 
@@ -381,11 +381,14 @@ modelCor(models_perf)
 ```
 
 ### 3D - Features Engineering
+
 ```{r}
 merged$to_poi_ratio = merged$from_poi_to_this_person / merged$to_messages
 merged$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
 merged$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
 ```
+
+Report how much those 3 new features improve the prediction performance based on top algorithms in 3B and 3C. You don’t need to re-run all algorithms in 3B and C, but you need to report the results of at least ONE best algorithm in 3B and ONE best algorithm in 3C to show the benefit of features engineering.
 
 ### 3B and 3C models again with engineered features
 ```{r}
