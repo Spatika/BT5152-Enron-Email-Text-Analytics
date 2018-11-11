@@ -198,6 +198,10 @@ model_knn <- train(poi ~., data = train2,method="knn",trControl = control,
 pred_knn_tr <- predict(model_knn,newdata =train_features_df)
 mean(pred_knn_tr == train_poi$poi)
 
+#Training accuracy 0.89%
+pred_knn_tr <- predict(model_knn,newdata =train_features_df)
+mean(pred_knn_tr == train_poi$poi)
+
 #Testing accuracy 0.85%
 pred_knn <- predict(model_knn,newdata =test_features_df)
 mean(pred_knn == test_poi$poi)
@@ -280,7 +284,6 @@ model.svm <- svm(factor(poi) ~., data = train2, kernel = "linear")
 
 pred_svm <- predict(model.svm, train_features_df)
 mean(pred_svm == train_poi$poi)
-
 
 #Testing accuracy 0.82
 pred_svm <- predict(model.svm, test2)
