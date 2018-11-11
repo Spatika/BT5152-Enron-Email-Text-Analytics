@@ -168,6 +168,7 @@ colnames(test_poi) <- c("poi")
 ```{r}
 library(C50)
 
+# common control for all the baseline methods in 3B and 3C
 control <- trainControl(method = "cv", number = 5, sampling = "smote", classProbs = TRUE, summaryFunction = twoClassSummary)
 
 # winnow - feature selection or not, trials - number of boosting iterations (more than 5 causing some warnings)
@@ -193,7 +194,7 @@ test_pred_C50 <- ROCR::prediction(as.numeric(predict(model_C50, test_features_df
 as.numeric(performance(test_pred_C50, "auc")@y.values) # 0.6239 auc
 ```
 
-## 3B - Baseline KNN Model
+## 3B - Baseline k-NN Model
 ```{r}
 library(caret)
 library(tidyverse)
@@ -320,15 +321,17 @@ cm$byClass["Recall"] #0.84
 
 ```
 
-## Random Forest SMOTE - Improves Recall rate to 85.7%
+## Random Forest SMOTE - improves Recall rate to 85.7%
 ```{r}
 rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5))
-test_cm <- table(predict(rf_model, test_features_df), test_poi$poi)
-confusionMatrix(test_cm)
 
-rf_model_smote <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5, sampling = "smote"))
+test_cm <- table(predict(rf_model, test_features_df), test_poi$poi)
+confusionMatrix(test_cm, mode = "everything")
+
+rf_model_smote <- train(poi ~ ., data = cbind(train_features_df,train_poi), 
+                        method = "rf", trControl = control, metric = "ROC")
 test_cm <- table(predict(rf_model_smote, test_features_df), test_poi$poi)
-confusionMatrix(test_cm)
+confusionMatrix(test_cm, mode = "everything")
 ```
 
 ## 3C - Random Forest using Ranger
