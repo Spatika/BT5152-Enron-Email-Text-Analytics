@@ -192,26 +192,29 @@ test2 = cbind(test_features_df,test_poi)
 train2[is.na(train2)] = 0
 test2[is.na(test2)] = 0
 
-control = trainControl(method="cv", number = 5)
+control <- trainControl(method = "cv", number = 5, sampling = "smote", classProbs= TRUE, summaryFunction = twoClassSummary)
 
-model_knn <- train(poi ~., data = train2,method="knn",trControl = control,
-                   tuneGrid =expand.grid(k = c(3, 7, 11)))
+model_knn <- train(poi ~., data = train2, method="knn", trControl = control,
+                   tuneGrid =expand.grid(k = c(3, 7, 11)),
+                   preProcess = c("scale", "center"),
+                   metric = "ROC")
 
-#Training accuracy 0.89%
+# Training accuracy 0.73
 pred_knn_tr <- predict(model_knn,newdata =train_features_df)
 mean(pred_knn_tr == train_poi$poi)
 
-#Training accuracy 0.89%
-pred_knn_tr <- predict(model_knn,newdata =train_features_df)
-mean(pred_knn_tr == train_poi$poi)
-
-#Testing accuracy 0.85%
+# Testing accuracy 0.745
 pred_knn <- predict(model_knn,newdata =test_features_df)
 mean(pred_knn == test_poi$poi)
 cm = confusionMatrix(pred_knn, test_poi$poi)
 
-cm$byClass["Precision"] #0.8571429
-cm$byClass["Recall"] #1
+cm$byClass["Precision"] # 0.92
+cm$byClass["Recall"] # 0.782
+
+# AUC
+test_pred_knn <- ROCR::prediction(as.numeric(pred_knn), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_knn, "auc")@y.values) # 0.591 auc
+
 ```
 ## 3B - Baseline RPart Model
 ```{r}
