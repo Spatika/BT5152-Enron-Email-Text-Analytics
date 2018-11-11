@@ -253,9 +253,9 @@ mean(test_pred1 == test_poi$poi)
 confusionMatrix(test_pred1, test_poi$poi) #Testing accuracy 
 
 # tuning the model
-cvCtrl = trainControl(method="cv", number = 5)
+cvCtrl = trainControl(method="cv", number = 5, sampling = 'smote')
 grid = expand.grid(size = 2, decay = 0)
-nn3 = train(poi ~., method = 'nnet', data = train2, trControl = cvCtrl, tuneGrid = grid, tuneLength = 5)
+nn3 = train(poi ~., method = 'nnet', data = train2, trControl = cvCtrl, tuneGrid = grid,preProcess = c("scale", "center"), tuneLength = 5)
 nn3_pred = predict(nn3, train2)
 confusionMatrix(nn3_pred, train_poi$poi) #Training accuracy 
 # test data pred 
