@@ -256,7 +256,7 @@ test2 = cbind(test_features_df,test_poi)
 train2[is.na(train2)] = 0
 test2[is.na(test2)] = 0
 
-nn2 = train(poi ~., method = 'nnet', data = train2)
+nn2 = train(poi ~., method = 'nnet', trControl = trainControl(sampling='smote'), data = train2)
 summary(nn2)
 
 nn2_pred = predict(nn2, train_features_df)
