@@ -199,31 +199,26 @@ as.numeric(performance(test_pred_C50, "auc")@y.values) # 0.6239 auc
 library(caret)
 library(tidyverse)
 
-train2 = cbind(train_features_df,train_poi)
-test2 = cbind(test_features_df,test_poi)
-train2[is.na(train2)] = 0
-test2[is.na(test2)] = 0
-
-model_knn <- train(poi ~., data = train2, method="knn", trControl = control,
+model_knn <- train(poi ~., data = cbind(train_features_df, train_poi), method="knn", trControl = control,
                    tuneGrid = expand.grid(k = c(3, 7, 11)),
                    preProcess = c("scale", "center"),
                    metric = "ROC")
 
-# Training accuracy 0.73
-pred_knn_tr <- predict(model_knn,newdata =train_features_df)
+# Training accuracy 0.82
+pred_knn_tr <- predict(model_knn, newdata = train_features_df)
 mean(pred_knn_tr == train_poi$poi)
 
-# Testing accuracy 0.745
-pred_knn <- predict(model_knn,newdata =test_features_df)
+# Testing accuracy 0.82
+pred_knn <- predict(model_knn,newdata = test_features_df)
 mean(pred_knn == test_poi$poi)
 cm = confusionMatrix(pred_knn, test_poi$poi)
 
-cm$byClass["Precision"] # 0.92
-cm$byClass["Recall"] # 0.782
+cm$byClass["Precision"] # 0.911
+cm$byClass["Recall"] # 0.89
 
 # AUC
 test_pred_knn <- ROCR::prediction(as.numeric(pred_knn), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_knn, "auc")@y.values) # 0.591 auc
+as.numeric(performance(test_pred_knn, "auc")@y.values) # 0.545 auc
 
 ```
 
@@ -302,22 +297,28 @@ library(caret)
 library(e1071)
 library(DMwR)
 
-control <-  trainControl(method="cv", number = 5, sampling = 'smote')
-model.svm  <- train(factor(poi) ~., data = train2, method = "svmLinear", trControl = control)
+# control <-  trainControl(method="cv", number = 5, sampling = 'smote')- using same control as above
+model_svm  <- train(factor(poi) ~., data = cbind(train_features_df, train_poi),
+                    metric = "ROC", method = "svmLinear", 
+                    trControl = control, preProcess = c("scale", "center"))
 
-#Training accuracy 0.85
+# Variable(s) `' constant. Cannot scale data.???
 
-pred_svm <- predict(model.svm, train2)
-mean(pred_svm == scaled_training$poi)
+# training accuracy 0.933
+pred_svm_te <- predict(model_svm, train_features_df)
+mean(pred_svm_tr == train_poi$poi)
 
+# testing accuracy 0.77
+pred_svm <- predict(model.svm, test_features_df)
+mean(pred_svm == test_poi$poi)
+cm = confusionMatrix(pred_svm, test_poi$poi)
 
-#Testing accuracy 0.77
-pred_svm <- predict(model.svm, test2)
-mean(pred_svm == scaled_test$poi)
-cm = confusionMatrix(pred_svm, scaled_test$poi)
+cm$byClass["Precision"] # 0.954
+cm$byClass["Recall"] # 0.913
 
-cm$byClass["Precision"] #0.86
-cm$byClass["Recall"] #0.84
+# AUC
+test_pred_svm <- ROCR::prediction(as.numeric(pred_svm), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_svm, "auc")@y.values) # 0.756 auc
 
 ```
 
