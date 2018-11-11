@@ -145,12 +145,16 @@ denormalize <- function(x, min_x, max_x) {
 
 combined_features_df <- merged[,-c(1,2,3)]
 combined_features_df <- combined_features_df %>% mutate_if(is.numeric, normalize)
+
 ```
 
 ## Combine Text Features to original feature list
 ```{r}
 colnames(combined_features_df) <- paste("Main", colnames(combined_features_df), sep = "_")
 combined_features_df <- cbind(combined_features_df, tf_idf_features, document_topic_dist)
+
+# remove features with near zero variance - Main_loan_advances and Main_director_fees
+combined_features_df <- select(combined_features_df, -Main_loan_advances, -Main_director_fees)
 ```
 
 ## 3A - Split into training and validation and perform scaling
