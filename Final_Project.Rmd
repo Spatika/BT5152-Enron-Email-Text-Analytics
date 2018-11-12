@@ -1,13 +1,13 @@
 ### Libraries
 ```{r}
-#library(formattable) # output is easier to read an well formatted
 library(ggplot2)
 library(tm)
 library(ROCR)
 library(parallel)
 library(doParallel)
-library(tm)
+library(C50)
 library(caret)
+library(rpart)
 library(plyr)
 library(dplyr)
 library(stringr)
@@ -16,6 +16,7 @@ library(topicmodels)
 library(tidytext)
 library(tidyr)
 library(tibble)
+library(tidyverse)
 library(tm.lexicon.GeneralInquirer)
 ```
 ### Start cluster
@@ -84,12 +85,8 @@ email_corpus <- tm_map(email_corpus, stripWhitespace) # eliminate unneeded white
 dtm_control <- list(weighting = function(x) weightTfIdf(x, normalize = FALSE))
 email_dtm <- DocumentTermMatrix(email_corpus, control = dtm_control)
 
-# neg score, placeholder for some other dictionary approach
-tf_idf_features <- tm_term_score(email_dtm, terms_in_General_Inquirer_categories("Negativ")) 
-
-# tf_idf_features <- tbl_df(as.matrix(email_dtm))
-# nzv_columns <- nearZeroVar(tf_idf_features)
-# tf_idf_features <- tf_idf_features[, -nzv_columns]
+# neg score 
+dict_features <- tm_term_score(email_dtm, terms_in_General_Inquirer_categories("Negativ")) 
 ```
 
 ## Document-Topic Distributions as Features
@@ -102,7 +99,6 @@ dtm_control2$dictionary <- findFreqTerms(email_dtm2, lowfreq = 100)
 email_dtm2 <- DocumentTermMatrix(email_corpus, control = dtm_control2)
 
 # Remove docs which all frequencies are zeros (side effect of high frequency terms filtering during pre-processing)
-
 row_totals <- apply(email_dtm2 , 1, sum)
 email_dtm2 <- email_dtm2[apply(email_dtm2 , 1, sum) > 0,]
 
@@ -148,11 +144,14 @@ top_terms %>%
   geom_bar(alpha = 0.8, stat = "identity", show.legend = FALSE) +
   facet_wrap(~ topic, scales = "free") +
   coord_flip()
-
 ```
-## Feature from Python Word2Vec Clustering
+## Feature from Python Word2Vec Clustering (Code to create this feature is in Python file)
 ```{r}
-cluster_labels = read.csv("cluster_labels.csv", stringsAsFactors = FALSE, header = F)
+word2vec_cluster_labels = read.csv("cluster_labels.csv", stringsAsFactors = FALSE, header = F)
+```
+## Create Latent Semantic Analyis Model on TF-IDF Vectors and use SVD to reduce Dimension then Feed into Features for Modelling (Code to create this feature is in Python file)
+```{r}
+lsa_features = as.matrix(read.csv("LSA_SVD.csv", stringsAsFactors = FALSE, header = F))
 ```
 ## Scale numerical variables
 ```{r}
@@ -166,23 +165,20 @@ denormalize <- function(x, min_x, max_x) {
 
 combined_features_df <- merged[,-c(1,2,3)]
 combined_features_df <- combined_features_df %>% mutate_if(is.numeric, normalize)
-
 ```
 
 ## Combine Text Features to original feature list
 ```{r}
 colnames(combined_features_df) <- paste("Main", colnames(combined_features_df), sep = "_")
-combined_features_df <- cbind(combined_features_df, tf_idf_features, document_topic_dist, cluster_labels)
+combined_features_df <- cbind(combined_features_df, dict_features, document_topic_dist, word2vec_cluster_labels,lsa_features)
 
-# remove features with near zero variance - Main_loan_advances and Main_director_fees
+# remove features with near zero variance - Main_loan_advances and Main_director_fees and Main_restricted_stock_deferred
 combined_features_df <- select(combined_features_df, -Main_loan_advances, -Main_director_fees, -Main_restricted_stock_deferred)
 ```
 
 ## 3A - Split into training and validation and perform scaling
 ```{r}
-set.seed(5152)
 train_idx <- createDataPartition(merged$poi, p = 0.7, list = FALSE)
-# train_idx <- sample(nrow(combined_features_df) * 0.60)
 
 # to see if train and test will have balanced distribution of POI
 ###################################
@@ -202,14 +198,12 @@ test_poi <- as.data.frame(merged[-train_idx,"poi"])
 colnames(test_poi) <- c("poi")
 ```
 
-## 3B - Baseline C5.0 Model
+## 3B - Baseline Cross-validated C5.0 Model with Smote OverSampling
 ```{r}
-library(C50)
-
 # common control for all the baseline methods in 3B and 3C
 control <- trainControl(method = "repeatedcv", number = 5, repeats = 2, sampling = "smote", classProbs = TRUE, summaryFunction = twoClassSummary)
 
-# winnow - feature selection or not, trials - number of boosting iterations (more than 5 causing some warnings)
+# winnow - feature selection or not, trials - number of boosting iterations
 grid <- expand.grid(.model = "tree", .winnow = c(TRUE,FALSE), .trials = 1:5) 
 
 set.seed(5152)
@@ -225,36 +219,42 @@ test_pred_C50 <- predict(model_C50, test_features_df) #predict
 mean(test_pred_C50 == test_poi$poi) # calculate accuracy 0.784
 
 # PRECISION and RECALL
-test_cm_C50 <- table(predict(model_C50, test_features_df), test_poi$poi)
+train_cm_C50 <- table(train_pred_C50, train_poi$poi)
+confusionMatrix(train_cm_C50, mode = 'everything') # acc 0.784, pre 0.9487, recall 0.8043
+
+test_cm_C50 <- table(test_pred_C50, test_poi$poi)
 confusionMatrix(test_cm_C50, mode = 'everything') # acc 0.784, pre 0.9487, recall 0.8043
 
 # AUC
-test_pred_C50 <- ROCR::prediction(as.numeric(predict(model_C50, test_features_df)), as.numeric(test_poi$poi))
+test_pred_C50 <- ROCR::prediction(as.numeric(test_pred_C50), as.numeric(test_poi$poi))
 as.numeric(performance(test_pred_C50, "auc")@y.values) # 0.702 auc
 ```
 
-## 3B - Baseline k-NN Model
+## 3B - Baseline Cross-validated k-NN Model with SMOTE sampling
 ```{r}
-library(caret)
-library(tidyverse)
-
 set.seed(5152)
 model_knn <- train(poi ~., data = cbind(train_features_df, train_poi), method="knn", trControl = control,
                    tuneGrid = expand.grid(k = c(3, 7, 11)),
                    preProcess = c("scale", "center"),
                    metric = "ROC")
 
-# Training accuracy 0.82
+# Training accuracy 
 pred_knn_tr <- predict(model_knn, newdata = train_features_df)
 mean(pred_knn_tr == train_poi$poi)
 
-# Testing accuracy 0.82
+# Testing accuracy
 pred_knn <- predict(model_knn,newdata = test_features_df)
 mean(pred_knn == test_poi$poi)
-cm = confusionMatrix(pred_knn, test_poi$poi)
 
+# PRECISION and RECALL
+train_cm = confusionMatrix(pred_knn_tr, train_poi$poi)
+train_cm$byClass["Precision"] # 0.93
+train_cm$byClass["Recall"] # 0.869
+
+cm = confusionMatrix(pred_knn, test_poi$poi)
 cm$byClass["Precision"] # 0.93
 cm$byClass["Recall"] # 0.869
+cm$byClass["F1"]
 
 # AUC
 test_pred_knn <- ROCR::prediction(as.numeric(pred_knn), as.numeric(test_poi$poi))
@@ -262,10 +262,8 @@ as.numeric(performance(test_pred_knn, "auc")@y.values) # 0.59 auc
 
 ```
 
-## 3B - Baseline RPart Model
+## 3B - Baseline Cross-Validated RPart Model with SMOTE Sampling
 ```{r}
-library(rpart)
-
 control <- trainControl(method = "cv", number = 5, sampling = "smote", classProbs= TRUE, summaryFunction = twoClassSummary)
 
 grid <- expand.grid(.cp = c(0.005, 0.01, 0.02, 0.05, 0.1))
@@ -279,6 +277,9 @@ rpart_model_smote <- train(poi ~ ., data = cbind(train_features_df, train_poi),
 rpart_model_smote$bestTune
 
 # PRECISION and RECALL
+train_cm_rpart <- table(predict(rpart_model_smote, train_features_df), train_poi$poi)
+confusionMatrix(train_cm_rpart, mode = 'everything') # acc 0.823, pre 0.951, recall 0.847
+
 test_cm_rpart <- table(predict(rpart_model_smote, test_features_df), test_poi$poi)
 confusionMatrix(test_cm_rpart, mode = 'everything') # acc 0.823, pre 0.951, recall 0.847
 
@@ -288,42 +289,28 @@ as.numeric(performance(test_pred_rpart, "auc")@y.values) # 0.723 auc
 
 ```
 
-## 3B - Baseline NNet Model
+## 3B - Baseline Cross-Validated NNet Model with SMOTE sampling
 ```{r}
 library(nnet)
-train2 = cbind(train_features_df,train_poi)
-test2 = cbind(test_features_df,test_poi)
+train_nnet = cbind(train_features_df,train_poi)
+test_nnet = cbind(test_features_df,test_poi)
 
-train2[is.na(train2)] = 0
-test2[is.na(test2)] = 0
-
-# nn2 = train(poi ~., method = 'nnet', trControl = trainControl(sampling='smote'), data = train2)
-# summary(nn2)
-# 
-# nn2_pred = predict(nn2, train_features_df)
-# mean(nn2_pred == train_poi$poi)
-# confusionMatrix(nn2_pred, train_poi$poi, mode = 'everything') #Training accuracy 
-# # test data pred
-# test_pred1 = predict(nn2, test_features_df)
-# mean(test_pred1 == test_poi$poi)
-# confusionMatrix(test_pred1, test_poi$poi, mode = 'everything') #Testing accuracy 
-
-# tuning the model
-# cvCtrl = trainControl(method="cv", number = 5, sampling = 'smote')
+train_nnet[is.na(train_nnet)] = 0
+test_nnet[is.na(test_nnet)] = 0
 
 grid = expand.grid(.size = c(1,2,3), .decay = c(0, 1, 2))
 
 set.seed(5152)
-model_nn = train(poi ~., method = 'nnet', data = train2, metric = "ROC",
+model_nn = train(poi ~., method = 'nnet', data = train_nnet, metric = "ROC",
             trControl = control, tuneGrid = grid, preProcess = c("scale", "center"))
 
 model_nn$bestTune
 # train data pred
-nn_pred_train = predict(model_nn, train2)
+nn_pred_train = predict(model_nn, train_nnet)
 confusionMatrix(nn_pred_train, train_poi$poi, mode = 'everything') # training accuracy 
 
 # test data pred 
-nn_pred_test = predict(model_nn, test2)
+nn_pred_test = predict(model_nn, test_nnet)
 confusionMatrix(nn_pred_test, test_poi$poi, mode = 'everything') # testing accuracy - 0.78, prec - 0.926, recall - 0.826
 
 # AUC
@@ -333,7 +320,7 @@ as.numeric(performance(test_pred_nn, "auc")@y.values) # 0.602 auc
 ```
 
 
-## 3B - Baseline Support Vector Machine Model
+## 3B - Baseline Cross-Validated Support Vector Machine Model with Smote Sampling
 ```{r}
 library(caret)
 library(e1071)
@@ -345,6 +332,8 @@ set.seed(5152)
 model_svm_c <- train(factor(poi) ~., data = cbind(train_features_df, train_poi),
                     metric = "ROC", method = "svmLinear", 
                     trControl = control, tuneGrid = expand.grid(.C= c(1,2,0.5)))
+
+model_svm_c$bestTune
  
 # training accuracy 0.94
 pred_svm_tr <- predict(model_svm_c, train_features_df)
@@ -353,24 +342,27 @@ mean(pred_svm_tr == train_poi$poi)
 # testing accuracy 0.83
 pred_svm <- predict(model_svm_c, test_features_df)
 mean(pred_svm == test_poi$poi)
+
+#PRECISION and RECALL
+train_cm = confusionMatrix(pred_svm_tr, train_poi$poi)
+
+train_cm$byClass["Precision"] 
+train_cm$byClass["Recall"]
+
 cm = confusionMatrix(pred_svm, test_poi$poi)
 
-cm$byClass["Precision"] # 0.84
-cm$byClass["Recall"] # 0.84
+cm$byClass["Precision"] 
+cm$byClass["Recall"]
+cm$byClass["F1"] 
 
 # AUC
 test_pred_svm <- ROCR::prediction(as.numeric(pred_svm), as.numeric(test_poi$poi))
 as.numeric(performance(test_pred_svm, "auc")@y.values) # 0.737 auc
 
-
 ```
 
-## 3C - Random Forest - improves recall to 0.934
+## 3C - Ensemble : Random Forest - improves recall to 0.934
 ```{r}
-# rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), method = "rf", trControl = trainControl(method = "cv", number = 5))
-# 
-# test_cm <- table(predict(rf_model, test_features_df), test_poi$poi)
-# confusionMatrix(test_cm, mode = "everything")
 set.seed(5152)
 rf_model_smote <- train(poi ~ ., data = cbind(train_features_df,train_poi), 
                         method = "rf", trControl = control, metric = "ROC",
@@ -384,7 +376,7 @@ test_pred_rf <- ROCR::prediction(as.numeric(predict(rf_model_smote, test_feature
 as.numeric(performance(test_pred_rf, "auc")@y.values) # 0.7 auc
 ```
 
-## 3C - Random Forest using Ranger
+## 3C - Ensemble :Random Forest using Ranger
 ```{r}
 # ctrl <- trainControl(method = 'cv', number = 3, verboseIter = TRUE) -- using common control instead from C50
 
@@ -407,7 +399,7 @@ test_cm = as.matrix(table(Actual=test_poi$poi, Predicted=test_pred))
 test_cm
 ```
 
-## 3C - Boosting
+## 3C - Ensemble :Boosting
 ```{r}
 # xgboost with caret train
 
@@ -437,8 +429,6 @@ confusionMatrix(test_cm_xgb, mode = 'everything') # acc 0.8235, pre 0.951, recal
 # AUC
 test_pred_xgb <- ROCR::prediction(as.numeric(predict(model_xgb, test_features_df)), as.numeric(test_poi$poi))
 as.numeric(performance(test_pred_xgb, "auc")@y.values) # 0.723 auc
-
-
 ```
 
 ## 3C - Ensemble Stacking
@@ -460,7 +450,6 @@ stack_control = trainControl(method='repeatedcv', number=5, repeats=3, index=fol
 
 models = caretList(poi ~ ., data=train2, metric = 'ROC', trControl=stack_control, tuneList = TL)
 
-
 results = resamples(models)
 summary(results)
 
@@ -472,7 +461,6 @@ confusionMatrix(stack_pred,train_poi$poi, mode = 'everything')
 
 stack_pred_test = predict(stack.glm, test_features_df)
 confusionMatrix(stack_pred_test,test_poi$poi, mode = 'everything')
-
 ```
 
 ### 3D - Feature Engineering
@@ -490,7 +478,6 @@ combined_features_df2$bonus_to_salary = merged$bonus / merged$salary
 combined_features_df2$bonus_to_total = merged$bonus / merged$total_payments
 combined_features_df2$bonus_to_salary[is.na(combined_features_df2$bonus_to_salary)] = 0
 combined_features_df2$bonus_to_total[is.na(combined_features_df2$bonus_to_total)] = 0
-  
 
 # train test split again
 train_features_df2 <- combined_features_df2[train_idx,]
@@ -502,7 +489,7 @@ Report how much those 3 new features improve the prediction performance based on
 ### 3B and 3C models again with engineered features
 ```{r}
 ####################
-## 3B model - SVM ##
+## 3B model - Best Algorithm - SVM ##
 ####################
 # tuning with cost parameter
 set.seed(5152)
@@ -529,8 +516,34 @@ test_pred_svm <- ROCR::prediction(as.numeric(pred_svm), as.numeric(test_poi$poi)
 as.numeric(performance(test_pred_svm, "auc")@y.values) # 0.737 auc
 
 ################
-## 3C model - ##
+## 3C model - ## Best Algorithm - Stacking
 ################
 
+library(caretEnsemble)
+library(caret)
 
+TL=list(
+   m1=caretModelSpec(method='C5.0'),
+   m2=caretModelSpec(method='rpart'),
+   m3=caretModelSpec(method='ranger'))
+
+set.seed(5152)
+folds = createFolds(train_poi$poi, k = 5)
+
+set.seed(5152)
+stack_control = trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
+
+models = caretList(poi ~ ., data=cbind(train_features_df2, train_poi), metric = 'ROC', trControl=stack_control, tuneList = TL)
+
+results = resamples(models)
+summary(results)
+
+stack.glm = caretStack(models, method="glm", metric="ROC", trControl=stack_control)
+print(stack.glm)
+  
+stack_pred = predict(stack.glm, train_features_df)
+confusionMatrix(stack_pred,train_poi$poi, mode = 'everything')
+
+stack_pred_test = predict(stack.glm, test_features_df)
+confusionMatrix(stack_pred_test,test_poi$poi, mode = 'everything')
 ```
