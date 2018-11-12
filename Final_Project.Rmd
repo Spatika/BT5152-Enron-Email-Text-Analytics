@@ -152,6 +152,7 @@ word2vec_cluster_labels = read.csv("cluster_labels.csv", stringsAsFactors = FALS
 ## Create Latent Semantic Analyis Model on TF-IDF Vectors and use SVD to reduce Dimension then Feed into Features for Modelling (Code to create this feature is in Python file)
 ```{r}
 lsa_features = as.matrix(read.csv("LSA_SVD.csv", stringsAsFactors = FALSE, header = F))
+colnames(lsa_features) <- lapply(colnames(lsa_features), paste0, "lsa")
 ```
 ## Scale numerical variables
 ```{r}
