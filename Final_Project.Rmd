@@ -485,6 +485,13 @@ combined_features_df2$to_poi_ratio = merged$from_poi_to_this_person / merged$to_
 combined_features_df2$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
 combined_features_df2$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
 
+#financial features
+combined_features_df2$bonus_to_salary = merged$bonus / merged$salary
+combined_features_df2$bonus_to_total = merged$bonus / merged$total_payments
+combined_features_df2$bonus_to_salary[is.na(combined_features_df2$bonus_to_salary)] = 0
+combined_features_df2$bonus_to_total[is.na(combined_features_df2$bonus_to_total)] = 0
+  
+
 # train test split again
 train_features_df2 <- combined_features_df2[train_idx,]
 test_features_df2 <- combined_features_df2[-train_idx,]
