@@ -365,32 +365,6 @@ as.numeric(performance(test_pred_svm, "auc")@y.values)
 
 ```
 
-## 3C - Ensemble: Random Forest
-Improves accuracy to 0.89 from best 3B model.
-```{r}
-set.seed(5152)
-library(randomForest)
-
-grid <- expand.grid(.mtry = c(27, 30, 32, 33))
-
-rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), 
-                        method = "rf", trControl = control, metric = "ROC",
-                        tuneGrid = grid,
-                        preProcess = c("scale", "center"))
-
-rf_model$bestTune
-
-train_cm <- table(predict(rf_model, train_features_df), train_poi$poi)
-confusionMatrix(train_cm, mode = "everything", positive = "True") 
-
-test_cm <- table(predict(rf_model, test_features_df), test_poi$poi)
-confusionMatrix(test_cm, mode = "everything", positive = "True") 
-
-
-# AUC
-test_pred_rf <- ROCR::prediction(as.numeric(predict(rf_model, test_features_df)), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_rf, "auc")@y.values)
-```
 
 ## 3C - Ensemble: Random Forest using Ranger
 ```{r}
@@ -489,6 +463,10 @@ confusionMatrix(stack_pred, train_poi$poi, mode = 'everything', positive = "True
 
 stack_pred_test = predict(stack.glm, test_features_df)
 confusionMatrix(stack_pred_test,test_poi$poi, mode = 'everything', positive = "True")
+
+### AUC
+test_pred_stack <- ROCR::prediction(as.numeric(predict(stack.glm, test_features_df)), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_stack, "auc")@y.values)
 ```
 
 ### 3D - Feature Engineering
@@ -516,9 +494,9 @@ Report how much those 3 new features improve the prediction performance based on
 
 ### 3B and 3C models again with engineered features
 ```{r}
-#######################################
-## 3B model - Best Algorithm - RPart ##
-#######################################
+###################################
+## 3B model - Best Model - RPart ##
+###################################
 
 grid <- expand.grid(.cp = c(0.005, 0.01, 0.02, 0.05, 0.1))
 
@@ -541,36 +519,34 @@ confusionMatrix(test_cm_rpart_fe, mode = 'everything', positive = "True")
 test_pred_rpart <- ROCR::prediction(as.numeric(predict(rpart_model, test_features_df)), as.numeric(test_poi$poi))
 as.numeric(performance(test_pred_rpart, "auc")@y.values)  
 
+############################
+## 3C Best Model - Ranger ##
+############################
 
-###########################################
-## 3C model - Best Algorithm - Stacking ###
-###########################################
+grid <- expand.grid(.mtry = c(9, 11, 13, 15, 20, 22, 25), .splitrule = "gini", .min.node.size = 1)
 
-library(caretEnsemble)
-library(caret)
+# mtry = floor(sqrt(dim(train_features_df)[2])),
+                                    
+ranger_model_fe <- train(x = train_features_df2, 
+                y = train_poi$poi, 
+                method = "ranger",
+                trControl = control,
+                metric = "ROC",
+                preProcess = c("scale", "center"),
+                tuneGrid = grid)
 
-TL=list(
-   m1=caretModelSpec(method='knn'),
-   m2=caretModelSpec(method='rpart'),
-   m3=caretModelSpec(method='ranger'))
+ranger_model_fe$bestTune
 
-set.seed(5152)
-folds = createFolds(train_poi$poi, k = 5)
+train_pred <- predict(ranger_model_fe, train_features_df2)
+train_cm = as.matrix(table(Actual=train_poi$poi, Predicted=train_pred))
+confusionMatrix(train_cm, mode = "everything", positive = "True") 
 
-set.seed(5152)
-stack_control = trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary, sampling = "up")
+test_pred <- predict(ranger_model_fe, test_features_df2)
+test_cm = as.matrix(table(Actual=test_poi$poi, Predicted=test_pred))
+confusionMatrix(test_cm, mode = "everything", positive = "True") 
 
-models = caretList(poi ~ ., data=cbind(train_features_df2, train_poi), metric = 'ROC', trControl=stack_control, tuneList = TL)
+# AUC
+test_pred_ranger_fe <- ROCR::prediction(as.numeric(predict(ranger_model_fe, test_features_df2)), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_ranger_fe, "auc")@y.values)
 
-results = resamples(models)
-summary(results)
-
-stack.glm = caretStack(models, method="glm", metric="ROC", trControl=stack_control)
-print(stack.glm)
-  
-stack_pred = predict(stack.glm, train_features_df)
-confusionMatrix(stack_pred,train_poi$poi, mode = 'everything')
-
-stack_pred_test = predict(stack.glm, test_features_df)
-confusionMatrix(stack_pred_test,test_poi$poi, mode = 'everything')
 ```
