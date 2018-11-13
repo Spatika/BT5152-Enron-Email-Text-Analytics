@@ -523,7 +523,7 @@ library(caretEnsemble)
 library(caret)
 
 TL=list(
-   m1=caretModelSpec(method='C5.0'),
+   m1=caretModelSpec(method='knn'),
    m2=caretModelSpec(method='rpart'),
    m3=caretModelSpec(method='ranger'))
 
@@ -531,7 +531,7 @@ set.seed(5152)
 folds = createFolds(train_poi$poi, k = 5)
 
 set.seed(5152)
-stack_control = trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary)
+stack_control = trainControl(method='repeatedcv', number=5, repeats=3, index=folds, savePredictions='final', classProbs=TRUE, summaryFunction=twoClassSummary, sampling = "up")
 
 models = caretList(poi ~ ., data=cbind(train_features_df2, train_poi), metric = 'ROC', trControl=stack_control, tuneList = TL)
 
