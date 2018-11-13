@@ -93,6 +93,8 @@ dict_features1 <- tm_term_score(email_dtm, terms_in_General_Inquirer_categories(
 # ethics score
 dict_features2 <- tm_term_score(email_dtm, terms_in_General_Inquirer_categories("RcEthic")) 
 
+dict_features <- cbind(dict_features1, dict_features2)
+
 ```
 
 ## Document-Topic Distributions as Features
@@ -151,15 +153,20 @@ top_terms %>%
   facet_wrap(~ topic, scales = "free") +
   coord_flip()
 ```
+
 ## Feature from Python Doc2Vec Clustering (code to create this feature is in Python file)
 ```{r}
-doc2vec_cluster_labels = read.csv("labels.csv", stringsAsFactors = FALSE, header = F)
+doc2vec_cluster_labels <- read.csv("labels.csv", stringsAsFactors = FALSE, header = F)
+doc2vec_cluster_labels <- doc2vec_cluster_labels$V2
 ```
+
 ## Create Latent Semantic Analyis Model on TF-IDF Vectors and use SVD to reduce Dimension then Feed into Features for Modelling (Code to create this feature is in Python file)
 ```{r}
-lsa_features = as.matrix(read.csv("lsa_svd_10.csv", stringsAsFactors = FALSE, header = F))
+lsa_features <- read.csv("lsa_svd_10.csv", stringsAsFactors = FALSE, header = F)
+lsa_features <- select(lsa_features, -V11)
 colnames(lsa_features) <- lapply(colnames(lsa_features), paste0, "lsa")
 ```
+
 ## Scale numerical variables
 ```{r}
 normalize <- function(x) { 
@@ -177,8 +184,8 @@ combined_features_df <- combined_features_df %>% mutate_if(is.numeric, normalize
 ## Combine Text Features to original feature list
 ```{r}
 colnames(combined_features_df) <- paste("Main", colnames(combined_features_df), sep = "_")
-# combined_features_df <- cbind(combined_features_df, dict_features, document_topic_dist, word2vec_cluster_labels,lsa_features)
-combined_features_df <- cbind(combined_features_df, doc2vec_cluster_labels, document_topic_dist, dict_features)
+
+combined_features_df <- cbind(combined_features_df, doc2vec_cluster_labels, document_topic_dist, dict_features, lsa_features)
 
 # remove features with near zero variance - Main_loan_advances and Main_director_fees and Main_restricted_stock_deferred
 combined_features_df <- select(combined_features_df, -Main_loan_advances, -Main_director_fees, -Main_restricted_stock_deferred)
@@ -220,6 +227,8 @@ model_C50 <- train(poi ~ ., data = cbind(train_features_df, train_poi), method =
                    preProcess = c("scale", "center"), 
                    tuneGrid = grid)
 
+model_C50$bestTune
+
 train_pred_C50 <- predict(model_C50, train_features_df) #predict
 mean(train_pred_C50 == train_poi$poi) # calculate accuracy 0.977
 
@@ -233,11 +242,11 @@ confusionMatrix(train_cm_C50, mode = 'everything', positive = "True")
 
 test_cm_C50 <- table(test_pred_C50, test_poi$poi)
 confusionMatrix(test_cm_C50, mode = 'everything', positive = "True")
-# acc 0.89, pre 0.667, recall 0.4
+# acc 0.89, pre 0.3, recall 0.6
 
 # AUC
 test_pred_C50 <- ROCR::prediction(as.numeric(test_pred_C50), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_C50, "auc")@y.values) # 0.684 auc
+as.numeric(performance(test_pred_C50, "auc")@y.values) # 0.69 auc
 ```
 
 ## 3B - Baseline Cross-validated k-NN Model with Up-Sampling
