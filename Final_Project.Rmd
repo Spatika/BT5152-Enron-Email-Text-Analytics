@@ -173,10 +173,6 @@ normalize <- function(x) {
   return((x - min(x)) / (max(x) - min(x)))
 }
 
-denormalize <- function(x, min_x, max_x) { 
-  return(x * (max_x - min_x) + min_x) 
-}
-
 combined_features_df <- merged[,-c(1,2,3)]
 combined_features_df <- combined_features_df %>% mutate_if(is.numeric, normalize)
 ```
@@ -193,6 +189,7 @@ combined_features_df <- select(combined_features_df, -Main_loan_advances, -Main_
 
 ## 3A - Split into training and validation and perform scaling
 ```{r}
+set.seed(5152)
 train_idx <- createDataPartition(merged$poi, p = 0.7, list = FALSE)
 
 # to see if train and test have balanced distribution of POI
@@ -230,19 +227,19 @@ model_C50 <- train(poi ~ ., data = cbind(train_features_df, train_poi), method =
 model_C50$bestTune
 
 train_pred_C50 <- predict(model_C50, train_features_df) #predict
-mean(train_pred_C50 == train_poi$poi) # calculate accuracy 0.977
+mean(train_pred_C50 == train_poi$poi)
 
 test_pred_C50 <- predict(model_C50, test_features_df) #predict
-mean(test_pred_C50 == test_poi$poi) # calculate accuracy 0.837
+mean(test_pred_C50 == test_poi$poi) 
 
 # PRECISION and RECALL
 train_cm_C50 <- table(train_pred_C50, train_poi$poi)
 confusionMatrix(train_cm_C50, mode = 'everything', positive = "True")
-# acc 1, pre 1.0, recall 1.00
+
 
 test_cm_C50 <- table(test_pred_C50, test_poi$poi)
 confusionMatrix(test_cm_C50, mode = 'everything', positive = "True")
-# acc 0.89, pre 0.3, recall 0.6
+
 
 # AUC
 test_pred_C50 <- ROCR::prediction(as.numeric(test_pred_C50), as.numeric(test_poi$poi))
@@ -258,13 +255,15 @@ model_knn <- train(poi ~., data = cbind(train_features_df, train_poi),
                    preProcess = c("scale", "center"),
                    metric = "ROC")
 
+model_knn$bestTune
+
 # Training accuracy 
 pred_knn_tr <- predict(model_knn, newdata = train_features_df)
-mean(pred_knn_tr == train_poi$poi) # 0.966
+mean(pred_knn_tr == train_poi$poi)
 
 # Testing accuracy
 pred_knn <- predict(model_knn,newdata = test_features_df)
-mean(pred_knn == test_poi$poi) # 0.837
+mean(pred_knn == test_poi$poi)
 
 # PRECISION and RECALL
 confusionMatrix(pred_knn_tr, train_poi$poi, mode = "everything", positive = 'True')
@@ -273,7 +272,7 @@ confusionMatrix(pred_knn, test_poi$poi, mode = "everything", positive = 'True')
 
 # AUC
 test_pred_knn <- ROCR::prediction(as.numeric(pred_knn), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_knn, "auc")@y.values) # 0.48 auc
+as.numeric(performance(test_pred_knn, "auc")@y.values) 
 
 ```
 
@@ -283,23 +282,23 @@ as.numeric(performance(test_pred_knn, "auc")@y.values) # 0.48 auc
 grid <- expand.grid(.cp = c(0.005, 0.01, 0.02, 0.05, 0.1))
 
 set.seed(5152)
-rpart_model_smote <- train(poi ~ ., data = cbind(train_features_df, train_poi), 
+rpart_model <- train(poi ~ ., data = cbind(train_features_df, train_poi), 
                            method = "rpart", metric = "ROC", 
                            trControl = control, preProcess = c("scale", "center"), 
                            tuneGrid = grid)
 
-rpart_model_smote$bestTune
+rpart_model$bestTune
 
 # PRECISION and RECALL
-train_cm_rpart <- table(predict(rpart_model_smote, train_features_df), train_poi$poi)
-confusionMatrix(train_cm_rpart, mode = 'everything', positive = "True") # acc 0.9213, prec 0.6316, recall 1.0
+train_cm_rpart <- table(predict(rpart_model, train_features_df), train_poi$poi)
+confusionMatrix(train_cm_rpart, mode = 'everything', positive = "True") 
 
-test_cm_rpart <- table(predict(rpart_model_smote, test_features_df), test_poi$poi)
-confusionMatrix(test_cm_rpart, mode = 'everything', positive = "True") # acc 0.7027, pre 0.2, recall 0.4
+test_cm_rpart <- table(predict(rpart_model, test_features_df), test_poi$poi)
+confusionMatrix(test_cm_rpart, mode = 'everything', positive = "True") 
 
 # AUC
-test_pred_rpart <- ROCR::prediction(as.numeric(predict(rpart_model_smote, test_features_df)), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_rpart, "auc")@y.values) # 0.575 auc
+test_pred_rpart <- ROCR::prediction(as.numeric(predict(rpart_model, test_features_df)), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_rpart, "auc")@y.values)  
 
 ```
 
@@ -322,16 +321,16 @@ model_nn$bestTune
 # train data pred
 nn_pred_train = predict(model_nn, train_nnet)
 confusionMatrix(nn_pred_train, train_poi$poi, mode = 'everything', positive = "True") 
-# training accuracy 1, prec 1, recall 1 
+
 
 # test data pred 
 nn_pred_test = predict(model_nn, test_nnet)
 confusionMatrix(nn_pred_test, test_poi$poi, mode = 'everything', positive = "True") 
-# testing accuracy - 0.8649, prec - 0.5, recall - 0.2
+
 
 # AUC
 test_pred_nn <- ROCR::prediction(as.numeric(predict(model_nn, test_features_df)), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_nn, "auc")@y.values) # 0.584 auc
+as.numeric(performance(test_pred_nn, "auc")@y.values) 
 
 ```
 
@@ -347,71 +346,89 @@ model_svm_c <- train(factor(poi) ~., data = cbind(train_features_df, train_poi),
 
 model_svm_c$bestTune
  
-# training accuracy 0.94
+# training accuracy 
 pred_svm_tr <- predict(model_svm_c, train_features_df)
 mean(pred_svm_tr == train_poi$poi)  
 
-# testing accuracy 0.78
+# testing accuracy
 pred_svm <- predict(model_svm_c, test_features_df)
 mean(pred_svm == test_poi$poi)
 
 #PRECISION and RECALL
 confusionMatrix(pred_svm_tr, train_poi$poi, mode = 'everything', positive = 'True')
-# accuracy 1, precision 1, recall 1
 confusionMatrix(pred_svm, test_poi$poi, mode = 'everything', positive = 'True')
-# accuracy 0.78, prec 0.33, recall 0.60
+
 
 # AUC
 test_pred_svm <- ROCR::prediction(as.numeric(pred_svm), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_svm, "auc")@y.values) # 0.6 auc
+as.numeric(performance(test_pred_svm, "auc")@y.values)
 
 ```
 
-## 3C - Ensemble : Random Forest
+## 3C - Ensemble: Random Forest
 Improves accuracy to 0.89 from best 3B model.
 ```{r}
 set.seed(5152)
 library(randomForest)
+
+grid <- expand.grid(.mtry = c(27, 30, 32, 33))
+
 rf_model <- train(poi ~ ., data = cbind(train_features_df,train_poi), 
                         method = "rf", trControl = control, metric = "ROC",
+                        tuneGrid = grid,
                         preProcess = c("scale", "center"))
+
+rf_model$bestTune
+
+train_cm <- table(predict(rf_model, train_features_df), train_poi$poi)
+confusionMatrix(train_cm, mode = "everything", positive = "True") 
 
 test_cm <- table(predict(rf_model, test_features_df), test_poi$poi)
 confusionMatrix(test_cm, mode = "everything", positive = "True") 
-# acc 0.89, prec 1.0, recall 0.2
+
 
 # AUC
 test_pred_rf <- ROCR::prediction(as.numeric(predict(rf_model, test_features_df)), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_rf, "auc")@y.values) # 0.6 auc
+as.numeric(performance(test_pred_rf, "auc")@y.values)
 ```
 
 ## 3C - Ensemble: Random Forest using Ranger
 ```{r}
-# ctrl <- trainControl(method = 'cv', number = 3, verboseIter = TRUE) -- using common control instead from C50
+
 library(ranger)
+
+grid <- expand.grid(.mtry = c(9, 11, 13, 15, 20, 22, 25), .splitrule = "gini", .min.node.size = 1)
+
+# mtry = floor(sqrt(dim(train_features_df)[2])),
+                                    
 ranger_model <- train(x = train_features_df, 
                 y = train_poi$poi, 
                 method = "ranger",
                 trControl = control,
                 metric = "ROC",
                 preProcess = c("scale", "center"),
-                tuneGrid = data.frame(mtry = floor(sqrt(dim(train_features_df)[2])),
-                                      splitrule = "gini",
-                                      min.node.size = 1))
+                tuneGrid = grid)
+
+ranger_model$bestTune
 
 train_pred <- predict(ranger_model, train_features_df)
-train_cm = as.matrix(table(Actual=train_poi$po, Predicted=train_pred))
-train_cm
+train_cm = as.matrix(table(Actual=train_poi$poi, Predicted=train_pred))
+confusionMatrix(train_cm, mode = "everything", positive = "True") 
 
 test_pred <- predict(ranger_model, test_features_df)
 test_cm = as.matrix(table(Actual=test_poi$poi, Predicted=test_pred))
 confusionMatrix(test_cm, mode = "everything", positive = "True") 
+
+# AUC
+test_pred_ranger <- ROCR::prediction(as.numeric(predict(ranger_model, test_features_df)), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_ranger, "auc")@y.values)
 ```
 
-## 3C - Ensemble :Boosting
+## 3C - Ensemble: Boosting
 ```{r}
 # xgboost with caret train
-grid <- expand.grid(.nrounds=c(25, 50, 100, 200, 500),.eta=c(0.005, 0.01, 0.05, 0.1),.gamma=c(0.1,0.5, 1, 1.5),
+grid <- expand.grid(.nrounds=c(25, 50, 100, 200),.eta=c(0.005, 0.01, 0.05, 0.1),
+                    .gamma=c(0.1,0.5, 1, 1.5),
                      .max_depth=c(2,3,4,5),.colsample_bytree=c(0.6, 0.8, 1),
                      .subsample=c(0.5, 0.75, 1),.min_child_weight=c(1, 2, 3, 5))
 
@@ -439,7 +456,7 @@ confusionMatrix(test_cm_xgb, mode = 'everything', positive = "True")
 
 # AUC
 test_pred_xgb <- ROCR::prediction(as.numeric(predict(model_xgb, test_features_df)), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_xgb, "auc")@y.values) # 0.88 auc
+as.numeric(performance(test_pred_xgb, "auc")@y.values)
 ```
 
 ## 3C - Ensemble Stacking
@@ -484,7 +501,7 @@ combined_features_df2$to_poi_ratio = merged$from_poi_to_this_person / merged$to_
 combined_features_df2$from_poi_ratio = merged$from_this_person_to_poi / merged$from_messages
 combined_features_df2$shared_poi_ratio = merged$shared_receipt_with_poi / merged$to_messages
 
-#financial features
+# financial features
 combined_features_df2$bonus_to_salary = merged$bonus / merged$salary
 combined_features_df2$bonus_to_total = merged$bonus / merged$total_payments
 combined_features_df2$bonus_to_salary[is.na(combined_features_df2$bonus_to_salary)] = 0
@@ -499,34 +516,35 @@ Report how much those 3 new features improve the prediction performance based on
 
 ### 3B and 3C models again with engineered features
 ```{r}
-####################
-## 3B model - Best Algorithm - SVM ##
-####################
-# tuning with cost parameter
+#######################################
+## 3B model - Best Algorithm - RPart ##
+#######################################
+
+grid <- expand.grid(.cp = c(0.005, 0.01, 0.02, 0.05, 0.1))
+
 set.seed(5152)
+rpart_model_fe <- train(poi ~ ., data = cbind(train_features_df2, train_poi), 
+                           method = "rpart", metric = "ROC", 
+                           trControl = control, preProcess = c("scale", "center"), 
+                           tuneGrid = grid)
 
-#tuning with cost parameter
-model_svm_fe <- train(factor(poi) ~., data = cbind(train_features_df2, train_poi),
-                    metric = "ROC", method = "svmLinear", 
-                    trControl = control, tuneGrid = expand.grid(.C= c(1,2,0.5)))
- 
-# training accuracy 0.943
-pred_svm_tr <- predict(model_svm_fe, train_features_df2)
-mean(pred_svm_tr == train_poi$poi)
-confusionMatrix(pred_svm_tr, train_poi$poi, mode = 'everything', positive = 'True')
+rpart_model_fe$bestTune
 
-# testing accuracy 0.837
-pred_svm_fe <- predict(model_svm_fe, test_features_df2)
-mean(pred_svm_fe == test_poi$poi) # 0.837
-confusionMatrix(pred_svm_fe, test_poi$poi, mode = 'everything', positive = 'True')
+# PRECISION and RECALL
+train_cm_rpart_fe <- table(predict(rpart_model_fe, train_features_df2), train_poi$poi)
+confusionMatrix(train_cm_rpart_fe, mode = 'everything', positive = "True") 
+
+test_cm_rpart_fe <- table(predict(rpart_model_fe, test_features_df2), test_poi$poi)
+confusionMatrix(test_cm_rpart_fe, mode = 'everything', positive = "True") 
 
 # AUC
-test_pred_svm <- ROCR::prediction(as.numeric(pred_svm), as.numeric(test_poi$poi))
-as.numeric(performance(test_pred_svm, "auc")@y.values) # 0.737 auc
+test_pred_rpart <- ROCR::prediction(as.numeric(predict(rpart_model, test_features_df)), as.numeric(test_poi$poi))
+as.numeric(performance(test_pred_rpart, "auc")@y.values)  
 
-################
-## 3C model - ## Best Algorithm - Stacking
-################
+
+###########################################
+## 3C model - Best Algorithm - Stacking ###
+###########################################
 
 library(caretEnsemble)
 library(caret)
