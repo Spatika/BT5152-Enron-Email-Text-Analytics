@@ -120,7 +120,7 @@ perplexities <- parSapply(cl = cl, topic_models, function(m, data) topicmodels::
 
 optimal_idx <- which.min(perplexities)
 
-# get document-topic dist for all of email_dtm2 with posterior, then use those as features, add to features_df # # --> need to preserve names
+# get document-topic dist for all of email_dtm2 with posterior, then use those as features, add to features_df
 docs_topics <- posterior(topic_models[[optimal_idx]], email_dtm2)
 document_topic_dist <- docs_topics[["topics"]]
 
